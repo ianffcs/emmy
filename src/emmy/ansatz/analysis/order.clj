@@ -1,0 +1,300 @@
+#_"SPDX-License-Identifier: GPL-3.0"
+
+(ns emmy.ansatz.analysis.order
+  "Order reasoning on `Int` for the analysis library.
+
+  - [[by-omega]] proves a linear-arithmetic goal from hypotheses. Every
+    subterm that isn't linear integer arithmetic (a product of two variables,
+    `num a`, `abs x`, …) is abstracted to a fresh variable, the resulting
+    closed statement is proved by Ansatz's `omega`, and the proof is applied
+    back to the original subterms. Nonlinear facts (e.g. `0 < a * b`) are
+    passed in as hypotheses.
+  - `Emmy.Analysis.Int.abs` with `abs_cases`, from which the other absolute
+    value facts follow by case analysis and [[by-omega]].
+  - Sign lemmas for products ([[mul-nonneg]]) and ring rewriting of
+    propositions ([[rewrite-prop]]).
+
+  [[install!]] adds the kernel theorems, all checked by `check-constant`
+  without axioms beyond Init's."
+  (:refer-clojure :exclude [abs])
+  (:require [ansatz.core :as a]
+            [ansatz.kernel.expr :as e]
+            [ansatz.kernel.level :as level]
+            [ansatz.kernel.name :as name]
+            [emmy.ansatz.algebra :as alg]
+            [emmy.ansatz.analysis.kernel :as t]
+            [emmy.ansatz.core :as k]))
+
+(def ^:private I k/int-type)
+(def ^:private l0 level/zero)
+(def ^:private l1 (level/succ level/zero))
+(def ^:private prefix "Emmy.Analysis.Int.")
+(defn- c [s] (k/const (str prefix s)))
+
+(defn lt "`a < b` in `Int`." [a b] (t/app (k/const "LT.lt" l0) I (k/const "Int.instLTInt") a b))
+(defn le "`a ≤ b` in `Int`." [a b] (t/app (k/const "LE.le" l0) I (k/const "Int.instLEInt") a b))
+
+;; ## by-omega
+
+(defn- head+args [x]
+  (let [[h args] (e/get-app-fn-args x)]
+    [(when (e/const? h) (name/->string (e/const-name h))) (vec args)]))
+
+(defn- numeral? [x]
+  (let [[h args] (head+args x)]
+    (or (e/lit-nat? x)
+        (and (= h "OfNat.ofNat") (= 3 (count args)))
+        (and (= h "Int.ofNat") (= 1 (count args)) (e/lit-nat? (args 0)))
+        (and (#{"Neg.neg" "Int.neg"} h) (numeral? (peek args))))))
+
+(defn- binop [h a b]
+  (case h
+    ("HAdd.hAdd" "Int.add") (k/add a b)
+    ("HSub.hSub" "Int.sub") (k/sub a b)))
+
+(defn- abstract-term
+  "Replaces the non-linear subterms of the `Int` term `x` by fresh fvars,
+  recorded in the `atoms` atom (expr → fvar, with insertion order)."
+  [atoms x]
+  (let [[h args] (head+args x)
+        n (count args)
+        recur* #(abstract-term atoms %)
+        atom! (fn []
+                (or (get-in @atoms [:map x])
+                    (let [fv (e/fvar (swap! (:ids @atoms) inc))]
+                      (swap! atoms #(-> % (assoc-in [:map x] fv) (update :order conj x)))
+                      fv)))]
+    (cond
+      (numeral? x) x
+      (and (#{"HAdd.hAdd" "HSub.hSub"} h) (= n 6)) (binop h (recur* (args 4)) (recur* (args 5)))
+      (and (#{"Int.add" "Int.sub"} h) (= n 2)) (binop h (recur* (args 0)) (recur* (args 1)))
+      (and (#{"Neg.neg"} h) (= n 3)) (k/neg (recur* (args 2)))
+      (and (#{"Int.neg"} h) (= n 1)) (k/neg (recur* (args 0)))
+      (and (= h "HMul.hMul") (= n 6) (numeral? (args 4))) (k/mul (args 4) (recur* (args 5)))
+      (and (= h "HMul.hMul") (= n 6) (numeral? (args 5))) (k/mul (recur* (args 4)) (args 5))
+      :else (atom!))))
+
+(defn- abstract-prop [atoms p]
+  (let [[h args] (head+args p)
+        n (count args)]
+    (cond
+      (and (#{"LT.lt" "LE.le"} h) (= n 4))
+      (t/app (e/get-app-fn p) (args 0) (args 1)
+             (abstract-term atoms (args 2)) (abstract-term atoms (args 3)))
+      (and (= h "Eq") (= n 3) (= (args 0) I))
+      (k/eq (abstract-term atoms (args 1)) (abstract-term atoms (args 2)))
+      (and (= h "Not") (= n 1)) (t/not' (abstract-prop atoms (args 0)))
+      (and (#{"And" "Or"} h) (= n 2))
+      (t/app (e/get-app-fn p) (abstract-prop atoms (args 0)) (abstract-prop atoms (args 1)))
+      (= h "False") p
+      :else (throw (ex-info "by-omega: unsupported proposition" {:prop (k/->string p)})))))
+
+(defonce ^:private omega-ids (atom 9000000000))
+
+(defn by-omega
+  "Proof term of the proposition `goal` from `hyps`, a sequence of
+  `[prop proof]`, by `omega` after abstracting non-linear subterms. Supported
+  propositions are `<`, `≤`, `=` on `Int`, `¬`, `∧`, `∨` and `False`. Throws if
+  `omega` fails."
+  [goal hyps]
+  (let [atoms (atom {:map {} :order [] :ids omega-ids})
+        goal' (abstract-prop atoms goal)
+        hyps' (mapv (fn [[p _]] (abstract-prop atoms p)) hyps)
+        order (:order @atoms)
+        fvars (mapv #(get-in @atoms [:map %]) order)
+        hyp-ids (vec (repeatedly (count hyps) #(swap! omega-ids inc)))
+        ids (into (mapv e/fvar-id fvars) hyp-ids)
+        body (reduce (fn [acc [hp id]] (e/forall' (str "h" id) hp (e/abstract1 acc id) :default))
+                     goal'
+                     (reverse (map vector hyps' hyp-ids)))
+        closed (reduce (fn [acc fv] (e/forall' (str "z" (e/fvar-id fv)) I
+                                               (e/abstract1 acc (e/fvar-id fv)) :default))
+                       ;; hypothesis binders are nested inside the atom binders
+                       body
+                       (reverse fvars))
+        names (mapv #(str "v" %) (range (count ids)))
+        [_ proof] (k/quietly (a/prove-law names closed '[(omega)]))]
+    (apply t/app proof (concat order (map second hyps)))))
+
+;; ## Rewriting propositions
+
+(defn rewrite-prop
+  "Proof of `(motive y)` from `h : motive x`, where `x = y` holds as a ring
+  identity in `Int` (proved by `int_ring`). `motive` is a Clojure function from
+  an `Int` term to a proposition."
+  [motive x y h]
+  (let [p (alg/prove-eq x y)]
+    (t/transport (t/lam "z" I motive) (assoc p :lhs x :rhs y) h)))
+
+;; ## Kernel theorems
+
+(defn- theorem! [label type proof]
+  (when-not (k/installed? (str prefix label))
+    (t/install-declaration! :thm (str prefix label) type proof)))
+
+(defn- define! [label type value]
+  (when-not (k/installed? (str prefix label))
+    (t/install-declaration! :def (str prefix label) type value)))
+
+(defn abs "Kernel term `Emmy.Analysis.Int.abs a`." [x] (t/app (c "abs") x))
+
+(defn mul-nonneg
+  "Proof of `0 ≤ a * b` from `ha : 0 ≤ a` and `hb : 0 ≤ b`."
+  [a b ha hb]
+  (t/app (c "mul_nonneg") a b ha hb))
+
+(defn abs-cases
+  "Proof of `(0 ≤ a ∧ abs a = a) ∨ (a < 0 ∧ abs a = -a)`."
+  [a]
+  (t/app (c "abs_cases") a))
+
+(defn with-abs-cases
+  "Proof of `goal` by case analysis on the sign of each term in `xs`. `f`
+  receives the accumulated facts (`[prop proof]` pairs: the sign of `x` and
+  `abs x = ±x`) and returns a proof of `goal` for that case."
+  [xs goal f]
+  (letfn [(go [xs facts]
+            (if (empty? xs)
+              (f facts)
+              (let [x (first xs)
+                    pos (t/and' (le k/zero x) (k/eq (abs x) x))
+                    neg (t/and' (lt x k/zero) (k/eq (abs x) (k/neg x)))
+                    branch (fn [p sign value]
+                             (t/lam "h" p
+                                    (fn [h]
+                                      (go (rest xs)
+                                          (conj facts
+                                                [sign (t/and-left sign value h)]
+                                                [value (t/and-right sign value h)])))))]
+                (t/or-elim pos neg goal (abs-cases x)
+                           (branch pos (le k/zero x) (k/eq (abs x) x))
+                           (branch neg (lt x k/zero) (k/eq (abs x) (k/neg x)))))))]
+    (go (vec xs) [])))
+
+(defn install!
+  "Installs the `Int` order and absolute-value theorems. Idempotent."
+  []
+  (k/ensure-init!)
+  (alg/install!)
+  (locking k/install-lock
+    (theorem! "lt_trans"
+      (t/forall [[x I] [y I] [z I]] (t/arrow (lt x y) (t/arrow (lt y z) (lt x z))))
+      (t/lambda [[x I] [y I] [z I] [h1 (lt x y)] [h2 (lt y z)]]
+        (by-omega (lt x z) [[(lt x y) h1] [(lt y z) h2]])))
+    (theorem! "add_pos"
+      (t/forall [[x I] [y I]] (t/arrow (lt k/zero x) (t/arrow (lt k/zero y) (lt k/zero (k/add x y)))))
+      (t/lambda [[x I] [y I] [hx (lt k/zero x)] [hy (lt k/zero y)]]
+        (by-omega (lt k/zero (k/add x y)) [[(lt k/zero x) hx] [(lt k/zero y) hy]])))
+    (theorem! "add_nonneg"
+      (t/forall [[x I] [y I]] (t/arrow (le k/zero x) (t/arrow (le k/zero y) (le k/zero (k/add x y)))))
+      (t/lambda [[x I] [y I] [hx (le k/zero x)] [hy (le k/zero y)]]
+        (by-omega (le k/zero (k/add x y)) [[(le k/zero x) hx] [(le k/zero y) hy]])))
+    (theorem! "mul_nonneg"
+      (t/forall [[x I] [y I]] (t/arrow (le k/zero x) (t/arrow (le k/zero y) (le k/zero (k/mul x y)))))
+      (t/lambda [[x I] [y I] [hx (le k/zero x)] [hy (le k/zero y)]]
+        ;; x·0 ≤ x·y, then rewrite x·0 to 0
+        (rewrite-prop #(le % (k/mul x y)) (k/mul x k/zero) k/zero
+                      (t/app (k/const "Int.mul_le_mul_of_nonneg_left") k/zero y x hy hx))))
+
+    (define! "abs" (t/arrow I I)
+      (t/lambda [[x I]]
+        (t/app (k/const "ite" l1) I (le k/zero x) (t/app (k/const "Int.decLe") k/zero x)
+               x (k/neg x))))
+    (theorem! "abs_cases"
+      (t/forall [[x I]]
+        (t/or' (t/and' (le k/zero x) (k/eq (abs x) x))
+               (t/and' (lt x k/zero) (k/eq (abs x) (k/neg x)))))
+      (t/lambda [[x I]]
+        (let [nonneg (le k/zero x)
+              inst (t/app (k/const "Int.decLe") k/zero x)
+              pos (t/and' nonneg (k/eq (abs x) x))
+              neg (t/and' (lt x k/zero) (k/eq (abs x) (k/neg x)))
+              goal (t/or' pos neg)]
+          (t/or-elim nonneg (t/not' nonneg) goal (t/decidable-em nonneg inst)
+                     (t/lam "h" nonneg
+                            (fn [h]
+                              (t/or-inl pos neg
+                                        (t/and-intro nonneg (k/eq (abs x) x) h
+                                                     (t/app (k/const "if_pos" l1) nonneg inst h I
+                                                            x (k/neg x))))))
+                     (t/lam "h" (t/not' nonneg)
+                            (fn [h]
+                              (t/or-inr pos neg
+                                        (t/and-intro (lt x k/zero) (k/eq (abs x) (k/neg x))
+                                                     (t/app (k/const "Iff.mp") (t/not' nonneg) (lt x k/zero)
+                                                            (t/app (k/const "Int.not_le") k/zero x) h)
+                                                     (t/app (k/const "if_neg" l1) nonneg inst h I
+                                                            x (k/neg x))))))))))
+    (doseq [[label vars goal-fn abs-terms]
+            [["abs_nonneg" '[x] (fn [x] (le k/zero (abs x))) (fn [x] [x])]
+             ["le_abs" '[x] (fn [x] (le x (abs x))) (fn [x] [x])]
+             ["neg_le_abs" '[x] (fn [x] (le (k/neg x) (abs x))) (fn [x] [x])]
+             ["abs_neg" '[x] (fn [x] (k/eq (abs (k/neg x)) (abs x))) (fn [x] [x (k/neg x)])]
+             ["abs_triangle" '[x y]
+              (fn [x y] (le (abs (k/add x y)) (k/add (abs x) (abs y))))
+              (fn [x y] [x y (k/add x y)])]
+             ["abs_sub_comm" '[x y]
+              (fn [x y] (k/eq (abs (k/sub x y)) (abs (k/sub y x))))
+              (fn [x y] [(k/sub x y) (k/sub y x)])]]]
+      (theorem! label
+        (if (= 1 (count vars))
+          (t/forall [[x I]] (goal-fn x))
+          (t/forall [[x I] [y I]] (goal-fn x y)))
+        (if (= 1 (count vars))
+          (t/lambda [[x I]]
+            (with-abs-cases (abs-terms x) (goal-fn x) #(by-omega (goal-fn x) %)))
+          (t/lambda [[x I] [y I]]
+            (with-abs-cases (abs-terms x y) (goal-fn x y) #(by-omega (goal-fn x y) %))))))
+    (theorem! "abs_lt"
+      (t/forall [[x I] [b I]]
+        (t/iff (lt (abs x) b) (t/and' (lt (k/neg b) x) (lt x b))))
+      (t/lambda [[x I] [b I]]
+        (let [lhs (lt (abs x) b) rhs (t/and' (lt (k/neg b) x) (lt x b))]
+          (t/iff-intro lhs rhs
+                       (t/lam "h" lhs
+                              (fn [h]
+                                (with-abs-cases [x] rhs
+                                  (fn [facts]
+                                    (t/and-intro (lt (k/neg b) x) (lt x b)
+                                                 (by-omega (lt (k/neg b) x) (conj facts [lhs h]))
+                                                 (by-omega (lt x b) (conj facts [lhs h])))))))
+                       (t/lam "h" rhs
+                              (fn [h]
+                                (with-abs-cases [x] lhs
+                                  (fn [facts]
+                                    (by-omega lhs (conj facts
+                                                        [(lt (k/neg b) x) (t/and-left (lt (k/neg b) x) (lt x b) h)]
+                                                        [(lt x b) (t/and-right (lt (k/neg b) x) (lt x b) h)]))))))))))
+    (theorem! "abs_mul"
+      (t/forall [[x I] [y I]] (k/eq (abs (k/mul x y)) (k/mul (abs x) (abs y))))
+      (t/lambda [[x I] [y I]]
+        (let [goal (k/eq (abs (k/mul x y)) (k/mul (abs x) (abs y)))]
+          (with-abs-cases [x y (k/mul x y)] goal
+            (fn [facts]
+              ;; facts: sign x, abs x = ±x, sign y, abs y = ±y, sign xy, abs xy = ±xy
+              (let [[[sx hsx] [ex hex] [sy hsy] [ey hey] [sxy hsxy] [exy hexy]] facts
+                    rhs-x (last (e/get-app-args ex))
+                    rhs-y (last (e/get-app-args ey))
+                    ;; abs x · abs y = (±x)(±y), by congruence on the case equations
+                    p1 (k/congr-mul {:lhs (abs x) :rhs rhs-x :term hex}
+                                    {:lhs (abs y) :rhs rhs-y :term hey})
+                    sign (if (= rhs-x x) (if (= rhs-y y) 1 -1) (if (= rhs-y y) -1 1))
+                    target (if (= 1 sign) (k/mul x y) (k/neg (k/mul x y)))
+                    p2 (alg/prove-eq (:rhs p1) target)
+                    rhs= (k/trans p1 p2)                 ; abs x · abs y = ±(x·y)
+                    ;; the sign of x·y is forced by the signs of x and y
+                    xy-sign (let [nx (if (= rhs-x x) x (k/neg x))
+                                  ny (if (= rhs-y y) y (k/neg y))
+                                  nn (mul-nonneg nx ny
+                                                 (by-omega (le k/zero nx) [[sx hsx]])
+                                                 (by-omega (le k/zero ny) [[sy hsy]]))]
+                              [(le k/zero (k/mul nx ny)) nn])
+                    lhs= (by-omega (k/eq (abs (k/mul x y)) target)
+                                   [[sxy hsxy] [exy hexy]
+                                    (let [[p pf] xy-sign]
+                                      ;; restate 0 ≤ (±x)(±y) as 0 ≤ ±(x·y)
+                                      [(le k/zero target)
+                                       (rewrite-prop #(le k/zero %) (last (e/get-app-args p)) target pf)])])]
+                (:term (k/trans {:lhs (abs (k/mul x y)) :rhs target :term lhs=}
+                                (k/symm rhs=))))))))))
+  :installed)

@@ -52,6 +52,22 @@ No `Real` complete ordered field, completeness axiom, or `HasDerivAt` axiom is
 introduced to bypass these obligations. The provisional construction lives under
 `Emmy.Analysis.RealConstruction`, rather than claiming compatibility with Mathlib.
 
+## Proof infrastructure (M0)
+
+- `analysis.kernel`: logic builders (`and-intro`, `or-elim`, `exists-intro`,
+  `exists-elim`, `decidable-em`, `classical-em`, `transport`, `propext'`,
+  quotient `quot-mk`/`quot-sound`/`quot-lift`/`quot-ind`) and the axiom audit
+  `axioms-of`, which walks every constant a declaration depends on.
+- `analysis.order`: `by-omega` proves a linear-arithmetic goal from hypotheses,
+  abstracting non-linear subterms (products, `num a`, `abs x`) to variables and
+  applying Ansatz's `omega` proof back to them; nonlinear facts are passed in as
+  hypotheses. `rewrite-prop` rewrites a proposition along a ring identity.
+- `Emmy.Analysis.Int.*`: `lt_trans`, `add_pos`, `add_nonneg`, `mul_nonneg`,
+  `abs` (by `ite` on `Int.decLe`) with `abs_cases`, `abs_nonneg`, `le_abs`,
+  `neg_le_abs`, `abs_neg`, `abs_triangle`, `abs_sub_comm`, `abs_lt`, `abs_mul`.
+  Axioms: `propext`, plus `Quot.sound` and `Classical.choice` wherever Ansatz's
+  `omega` proofs are used.
+
 ## Rational coefficients in the verified calculus
 
 `Emmy.PolyExpr` has a `frac p q` constructor (`p/(q+1)`). Expressions are
