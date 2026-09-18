@@ -6,6 +6,49 @@
   `(fn [x] (expt (- x x) 0))` threw "Divide by zero" (in both forward and
   reverse mode) because the rule computed `0 * x^-1`; it now returns 0
 
+- adds `emmy.ansatz.*` (JVM only), a bridge to the
+  [Ansatz](https://github.com/replikativ/ansatz) Lean-4-compatible kernel in
+  which Ansatz is the source of truth and Emmy renders the results:
+
+  - `emmy.ansatz.expression` defines the verified polynomial AST
+    `Emmy.PolyExpr` inside Ansatz, with its denotation `eval`, and reads Emmy
+    expressions into it
+
+  - `emmy.ansatz.calculus` defines `Emmy.PolyExpr.deriv` in Ansatz and proves
+    `deriv_correct` (Carathéodory's characterization of the derivative) by
+    induction; `emmy.ansatz.calculus/derivative` runs the compiled, verified
+    `deriv` and returns an Emmy expression
+
+  - `emmy.ansatz.simplify` defines a verified simplifier `Emmy.PolyExpr.simp`
+    (units, annihilation, constant folding, double negation) and proves
+    `simp_correct`; `derivative` returns results simplified by it
+
+  - `emmy.ansatz.rules` compiles Emmy-style rewrite rules
+    (`(defruleset name (+ 0 ?a) => ?a …)`, in `emmy.pattern.rule` syntax) into
+    a verified Ansatz `step`/`simp` pair over `PolyExpr`, proving each rule
+    sound (unsound rules are rejected by name) along with `step_correct` and
+    `simp_correct`; `simplifier` runs a rule set on Emmy expressions to a
+    fixpoint, like `rule-simplifier`
+
+  - `emmy.ansatz.match` is a pattern-matching front end for Ansatz
+    definitions: it flattens nested and mixed literal/variable patterns into a
+    decision tree and lambda-lifts inner `match`es into auxiliary definitions,
+    two shapes Ansatz 0.2.84 fails to elaborate
+
+  - `emmy.ansatz.core` registers runtime lowerings for `Int`'s constructors
+    and recursor, which Ansatz 0.2.84's code generator lacks, so `match` on
+    `Int` runs natively
+
+  - `emmy.ansatz.codegen` turns `PolyExpr` values back into Emmy expressions
+
+  - `emmy.ansatz.algebra` adds `int_ring`, a proof-producing ring normalizer
+    for `Int` (with rewriting by equations, hypotheses and definition
+    unfolding), and `int_ring_split`, which first case-splits on whatever a
+    definition's `match` is stuck on; both are registered as Ansatz tactics
+
+- bumps `org.clojure/clojure` to 1.12.5 and other dependencies, and adds
+  `org.replikativ/ansatz`
+
 ## [0.32.0]
 
 - #170:
