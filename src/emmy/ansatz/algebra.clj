@@ -464,6 +464,21 @@
 
 ;; ## Public API
 
+(defn normalize-terms
+  "Ring-normalizes each `Int` term in `terms` with one shared atom order, so
+  equal monomials are spelled identically across all of them. Returns
+  `[[nf proof] …]` with `proof : term = nf` (a proof map)."
+  [terms]
+  (let [[ctx irs] (reduce (fn [[ctx acc] x]
+                            (let [[ctx ir] (reify-term ctx x)] [ctx (conj acc ir)]))
+                          [empty-ctx []]
+                          terms)]
+    (mapv (fn [x ir]
+            (let [[P p] (normalize ctx ir)
+                  nf (poly-expr ctx P)]
+              [nf (assoc p :lhs x :rhs nf)]))
+          terms irs)))
+
 (defn prove-eq
   "Proves `lhs = rhs` (kernel `Int` terms, possibly containing free variables)
   as a polynomial identity over opaque atoms. Returns a proof map whose sides

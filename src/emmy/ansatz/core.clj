@@ -168,6 +168,11 @@
   [a b]
   (e/app* (const "Eq" l1) int-type a b))
 
+(defn eq-at
+  "The proposition `a = b` at `type`, which lives in `Sort level`."
+  [type level a b]
+  (e/app* (const "Eq" level) type a b))
+
 (defn eq-view
   "For a kernel proposition `@Eq.{u} T lhs rhs`, returns
   `{:type T :level u :lhs lhs :rhs rhs}`; nil for anything else."

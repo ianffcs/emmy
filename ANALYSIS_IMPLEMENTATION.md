@@ -37,10 +37,8 @@ carrier has the real field's mathematical properties.
 
 ## Required next proofs, in dependency order
 
-1. ~~Representative equivalence and operation congruence~~ (done); the rational
-   quotient `Quot Equiv` with lifted operations and its field laws (the
-   representative identities above lift through `Quot.sound`); normalization
-   correctness; order; executable/proof representation bridge.
+1. ~~Representative equivalence and operation congruence; the rational quotient
+   field with order~~ (done, M1).
 2. Cauchy equivalence, well-defined arithmetic and inverse on the quotient;
    rational embedding, order, Archimedean property, density, and completeness.
 3. Real metric/open-set topology, neighborhood limits, continuity of arithmetic.
@@ -67,6 +65,29 @@ introduced to bypass these obligations. The provisional construction lives under
   `neg_le_abs`, `abs_neg`, `abs_triangle`, `abs_sub_comm`, `abs_lt`, `abs_mul`.
   Axioms: `propext`, plus `Quot.sound` and `Classical.choice` wherever Ansatz's
   `omega` proofs are used.
+
+## ℚ as an ordered field (M1)
+
+`analysis.qfield` defines `Emmy.Analysis.Q.Q := Quot Rational.Rep Rational.Equiv`.
+Operations are lifted with `lift1`/`lift2` (respect proved by the
+representative congruences), relations with `lift2-prop` (via `propext`).
+Laws are genuine equalities, proved by `Quot.ind` and `Quot.sound` of a
+cross-multiplied identity (`quot-law!`, `q-theorem!`).
+
+- Commutative ring: `add_comm`, `add_assoc`, `zero_add`, `add_left_neg`,
+  `mul_comm`, `mul_assoc`, `one_mul`, `left_distrib`.
+- Field: `inv` (`⟨n,d⟩⁻¹ = ⟨n·d, n·n⟩`, `0⁻¹ = 0`) with `inv_congr_rep`,
+  `mul_inv_cancel : p ≠ 0 → p · p⁻¹ = 1`, `zero_ne_one`.
+- Order: `lt`, `le` with `lt_irrefl`, `le_refl`, `le_of_lt`, `lt_trans`,
+  `le_trans`, `lt_of_lt_of_le`, `lt_of_le_of_lt`, `le_antisymm`,
+  `lt_trichotomy`, `add_lt_add_left`, `add_le_add_left`, `mul_pos`,
+  `mul_nonneg`, `ne_of_lt`, `zero_lt_one`.
+- `abs` with `abs_nonneg`, `abs_mul`, `abs_triangle`; `archimedean`
+  (`∃ m : Int, p < ofInt m`); `half` with `half_pos`, `half_add_half`.
+
+`by-omega` now ring-normalizes both sides of every relation first (shared atom
+order), and respells literal coefficients as repeated sums, since Ansatz's
+`omega` accepts no multiplication by literals.
 
 ## Rational coefficients in the verified calculus
 

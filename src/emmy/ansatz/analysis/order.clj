@@ -91,11 +91,8 @@
 
 (defonce ^:private omega-ids (atom 9000000000))
 
-(defn by-omega
-  "Proof term of the proposition `goal` from `hyps`, a sequence of
-  `[prop proof]`, by `omega` after abstracting non-linear subterms. Supported
-  propositions are `<`, `≤`, `=` on `Int`, `¬`, `∧`, `∨` and `False`. Throws if
-  `omega` fails."
+(defn- omega-raw
+  "`by-omega` without normalization: abstracts atoms syntactically."
   [goal hyps]
   (let [atoms (atom {:map {} :order [] :ids omega-ids})
         goal' (abstract-prop atoms goal)
@@ -103,18 +100,115 @@
         order (:order @atoms)
         fvars (mapv #(get-in @atoms [:map %]) order)
         hyp-ids (vec (repeatedly (count hyps) #(swap! omega-ids inc)))
-        ids (into (mapv e/fvar-id fvars) hyp-ids)
         body (reduce (fn [acc [hp id]] (e/forall' (str "h" id) hp (e/abstract1 acc id) :default))
                      goal'
                      (reverse (map vector hyps' hyp-ids)))
         closed (reduce (fn [acc fv] (e/forall' (str "z" (e/fvar-id fv)) I
                                                (e/abstract1 acc (e/fvar-id fv)) :default))
-                       ;; hypothesis binders are nested inside the atom binders
                        body
                        (reverse fvars))
-        names (mapv #(str "v" %) (range (count ids)))
+        names (mapv #(str "v" %) (range (+ (count fvars) (count hyps))))
         [_ proof] (k/quietly (a/prove-law names closed '[(omega)]))]
     (apply t/app proof (concat order (map second hyps)))))
+
+(defn- relation-sides
+  "`[rebuild lhs rhs]` for an `Int` `<`, `≤` or `=`, else nil. `rebuild` makes
+  the same relation between new sides."
+  [p]
+  (let [[h args] (head+args p)
+        n (count args)]
+    (cond
+      (and (#{"LT.lt" "LE.le"} h) (= n 4) (= (args 0) I))
+      [(fn [x y] (t/app (e/get-app-fn p) (args 0) (args 1) x y)) (args 2) (args 3)]
+      (and (= h "Eq") (= n 3) (= (args 0) I))
+      [k/eq (args 1) (args 2)])))
+
+(def ^:private max-omega-coefficient 64)
+
+(defn- literal-value
+  "Integer value of a numeral term, or nil."
+  [x]
+  (let [[h args] (head+args x)]
+    (cond
+      (and (= h "OfNat.ofNat") (= 3 (count args)) (e/lit-nat? (args 1)))
+      (bigint (e/lit-nat-val (args 1)))
+      (and (= h "Neg.neg") (= 3 (count args))) (some-> (literal-value (args 2)) -)
+      :else nil)))
+
+(defn- monomial-base
+  "`m` for a normal-form monomial `v₁ * (v₂ * … * 1)`: the single atom for
+  degree one (dropping `* 1`), the product itself otherwise."
+  [m]
+  (let [[h args] (head+args m)]
+    (if (and (= h "HMul.hMul") (= 6 (count args)) (= 1 (literal-value (args 5))))
+      (args 4)
+      m)))
+
+(defn- omega-spelling
+  "Respells a ring normal form `c₁·m₁ + (c₂·m₂ + … + 0)` for Ansatz's `omega`,
+  which handles addition, negation and numerals but no multiplication by
+  literals: `c·m` becomes `m + … + m` (|c| times, negated if `c < 0`)."
+  [x]
+  (let [[h args] (head+args x)]
+    (if (and (= h "HAdd.hAdd") (= 6 (count args)))
+      (let [[_ [_ _ _ _ coeff mon]] (head+args (args 4))
+            c (literal-value coeff)
+            rest' (omega-spelling (args 5))]
+        (when (> (clojure.core/abs c) max-omega-coefficient)
+          (throw (ex-info "by-omega: coefficient too large" {:coefficient c})))
+        (if (= 1 (literal-value mon))
+          (k/add (k/lit c) rest')
+          (let [base (monomial-base mon)
+                sum (reduce k/add (repeat (clojure.core/abs c) base))]
+            (k/add (if (neg? c) (k/neg sum) sum) rest'))))
+      x)))
+
+(defn- omega-normal-forms
+  "Like `alg/normalize-terms`, respelled for `omega`: `[[nf proof] …]`."
+  [terms]
+  (mapv (fn [[nf p]]
+          (let [nf' (omega-spelling nf)]
+            (if (= nf nf')
+              [nf p]
+              [nf' (k/trans p (assoc (alg/prove-eq nf nf') :lhs nf :rhs nf'))])))
+        (alg/normalize-terms terms)))
+
+(defn by-omega
+  "Proof term of the proposition `goal` from `hyps`, a sequence of
+  `[prop proof]`. The sides of every `<`, `≤` and `=` are first ring-normalized
+  with one shared atom order (so `(a+1)·d` and `a·d + d` agree), then
+  non-linear monomials are abstracted to variables and the statement is proved
+  by `omega`. Supported propositions are `<`, `≤`, `=` on `Int`, `¬`, `∧`, `∨`
+  and `False`. Throws if `omega` fails."
+  [goal hyps]
+  (let [props (cons goal (map first hyps))
+        rels (map relation-sides props)
+        sides (vec (mapcat (fn [r] (when r [(nth r 1) (nth r 2)])) rels))
+        normal (omega-normal-forms sides)
+        ;; per proposition: [normalized prop, proof prop = normalized prop]
+        normalize (fn [p r offset]
+                    (if-not r
+                      [p nil]
+                      (let [[rebuild x y] r
+                            [nx px] (normal offset)
+                            [ny py] (normal (inc offset))]
+                        [(rebuild nx ny) [rebuild x y nx ny px py]])))
+        [norm-props _] (reduce (fn [[acc offset] [p r]]
+                                 [(conj acc (normalize p r offset)) (if r (+ offset 2) offset)])
+                               [[] 0]
+                               (map vector props rels))
+        ;; transport h : R(x, y) to R(nx, ny), one side at a time
+        forward (fn [h [rebuild _ y nx _ px py]]
+                  (let [h1 (t/transport (t/lam "z" I #(rebuild % y)) px h)]
+                    (t/transport (t/lam "z" I #(rebuild nx %)) py h1)))
+        backward (fn [h [rebuild x _ _ ny px py]]
+                   (let [h1 (t/transport (t/lam "z" I #(rebuild % ny)) (k/symm px) h)]
+                     (t/transport (t/lam "z" I #(rebuild x %)) (k/symm py) h1)))
+        [[goal' goal-info] & hyp-norms] norm-props
+        hyps' (mapv (fn [[_ proof] [np info]] [np (if info (forward proof info) proof)])
+                    hyps hyp-norms)
+        proof (omega-raw goal' hyps')]
+    (if goal-info (backward proof goal-info) proof)))
 
 ;; ## Rewriting propositions
 
@@ -196,6 +290,64 @@
         (rewrite-prop #(le % (k/mul x y)) (k/mul x k/zero) k/zero
                       (t/app (k/const "Int.mul_le_mul_of_nonneg_left") k/zero y x hy hx))))
 
+    (theorem! "lt_of_mul_lt_mul_right"
+      (t/forall [[x I] [y I] [z I]]
+        (t/arrow (lt k/zero z) (t/arrow (lt (k/mul x z) (k/mul y z)) (lt x y))))
+      (t/lambda [[x I] [y I] [z I] [hz (lt k/zero z)] [h (lt (k/mul x z) (k/mul y z))]]
+        (let [goal (lt x y)]
+          (t/or-elim goal (t/not' goal) goal
+                     (t/decidable-em goal (t/app (k/const "Int.decLt") x y))
+                     (t/lam "yes" goal identity)
+                     (t/lam "no" (t/not' goal)
+                            (fn [no]
+                              (let [hle (t/app (k/const "Iff.mp") (t/not' goal) (le y x)
+                                               (t/app (k/const "Int.not_lt") x y) no)
+                                    ;; z·y ≤ z·x, contradicting x·z < y·z
+                                    mono (t/app (k/const "Int.mul_le_mul_of_nonneg_left") y x z hle
+                                                (t/app (k/const "Int.le_of_lt") k/zero z hz))]
+                                (t/false-elim goal
+                                              (by-omega t/false-prop
+                                                        [[(lt (k/mul x z) (k/mul y z)) h]
+                                                         [(le (k/mul z y) (k/mul z x)) mono]])))))))))
+    (theorem! "mul_self_pos"
+      (t/forall [[x I]] (t/arrow (t/not' (k/eq x k/zero)) (lt k/zero (k/mul x x))))
+      (t/lambda [[x I] [hne (t/not' (k/eq x k/zero))]]
+        (let [goal (lt k/zero (k/mul x x))
+              neg (lt x k/zero) zero (k/eq x k/zero) pos (lt k/zero x)
+              rest (t/or' zero pos)]
+          (t/or-elim neg rest goal (t/app (k/const "Int.lt_trichotomy") x k/zero)
+                     (t/lam "h" neg
+                            (fn [h]
+                              (let [nx (k/neg x)
+                                    hn (by-omega (lt k/zero nx) [[neg h]])]
+                                (by-omega goal [[(lt k/zero (k/mul nx nx))
+                                                 (t/app (k/const "Int.mul_pos") nx nx hn hn)]]))))
+                     (t/lam "h" rest
+                            (fn [h]
+                              (t/or-elim zero pos goal h
+                                         (t/lam "h0" zero (fn [h0] (t/absurd' zero goal h0 hne)))
+                                         (t/lam "hp" pos
+                                                (fn [hp] (t/app (k/const "Int.mul_pos") x x hp hp))))))))))
+
+    (theorem! "le_of_mul_le_mul_right"
+      (t/forall [[x I] [y I] [z I]]
+        (t/arrow (lt k/zero z) (t/arrow (le (k/mul x z) (k/mul y z)) (le x y))))
+      (t/lambda [[x I] [y I] [z I] [hz (lt k/zero z)] [h (le (k/mul x z) (k/mul y z))]]
+        (let [goal (le x y)]
+          (t/or-elim goal (t/not' goal) goal
+                     (t/decidable-em goal (t/app (k/const "Int.decLe") x y))
+                     (t/lam "yes" goal identity)
+                     (t/lam "no" (t/not' goal)
+                            (fn [no]
+                              (let [hlt (t/app (k/const "Iff.mp") (t/not' goal) (lt y x)
+                                               (t/app (k/const "Int.not_le") x y) no)
+                                    ;; z·y < z·x, contradicting x·z ≤ y·z
+                                    mono (t/app (k/const "Int.mul_lt_mul_of_pos_left") y x z hlt hz)]
+                                (t/false-elim goal
+                                              (by-omega t/false-prop
+                                                        [[(le (k/mul x z) (k/mul y z)) h]
+                                                         [(lt (k/mul z y) (k/mul z x)) mono]])))))))))
+
     (define! "abs" (t/arrow I I)
       (t/lambda [[x I]]
         (t/app (k/const "ite" l1) I (le k/zero x) (t/app (k/const "Int.decLe") k/zero x)
@@ -245,6 +397,11 @@
             (with-abs-cases (abs-terms x) (goal-fn x) #(by-omega (goal-fn x) %)))
           (t/lambda [[x I] [y I]]
             (with-abs-cases (abs-terms x y) (goal-fn x y) #(by-omega (goal-fn x y) %))))))
+    (theorem! "abs_of_pos"
+      (t/forall [[x I]] (t/arrow (lt k/zero x) (k/eq (abs x) x)))
+      (t/lambda [[x I] [h (lt k/zero x)]]
+        (with-abs-cases [x] (k/eq (abs x) x)
+          #(by-omega (k/eq (abs x) x) (conj % [(lt k/zero x) h])))))
     (theorem! "abs_lt"
       (t/forall [[x I] [b I]]
         (t/iff (lt (abs x) b) (t/and' (lt (k/neg b) x) (lt x b))))

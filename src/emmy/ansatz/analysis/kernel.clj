@@ -126,6 +126,14 @@
              (app (k/const "congrArg" u1 u1) k/int-type prop (:lhs p) (:rhs p) motive (:term p))
              h))
 
+(defn transport-at
+  "Proof of `motive y` from `h : motive x` and `e : x = y`, where `x y : type`
+  and `type : Sort level`; `motive` is a kernel lambda `type → Prop`."
+  [type level motive x y e h]
+  (cast-prop (app motive x) (app motive y)
+             (app (k/const "congrArg" level u1) type prop x y motive e)
+             h))
+
 (defn propext' "Proof of `p = q` from `h : p ↔ q`." [p q h] (app (k/const "propext") p q h))
 
 (defn iff-intro "Proof of `p ↔ q` from `mp : p → q` and `mpr : q → p`." [p q mp mpr]
