@@ -3,6 +3,7 @@
 (ns emmy.ansatz.algebra-test
   (:require [ansatz.core :as a]
             [ansatz.kernel.env :as env]
+            [ansatz.kernel.expr :as e]
             [clojure.test :refer [deftest is testing]]
             [emmy.ansatz.algebra :as alg]
             [emmy.ansatz.core :as k]))
@@ -76,3 +77,29 @@
                                    '[x :- Int]
                                    '(= Int (Int.mul x x) (Int.add x x))
                                    '[(int_ring)]))))))
+
+(defn- bind-all
+  "Wraps `body` in `binder` (e/forall' or e/lam) over `[name fvar type]`,
+  outermost first."
+  [binder binders body]
+  (reduce (fn [acc [nm fv type]] (binder nm type (e/abstract1 acc (e/fvar-id fv)) :default))
+          body
+          (reverse binders)))
+
+(deftest linear-combination-test
+  (k/ensure-init!)
+  (let [[[_ a] [_ b] [_ c] [_ d] [_ h1] [_ h2]] (k/fresh-vars '[a b c d h1 h2])
+        binders [["a" a k/int-type] ["b" b k/int-type] ["c" c k/int-type]
+                 ["d" d k/int-type] ["h1" h1 (k/eq a b)] ["h2" h2 (k/eq c d)]]
+        hyp1 {:lhs a :rhs b :term h1}
+        hyp2 {:lhs c :rhs d :term h2}
+        lhs (k/add a (k/mul (k/lit 2) c))
+        rhs (k/add b (k/mul (k/lit 2) d))]
+    (testing "a + 2c = b + 2d follows from a = b and c = d"
+      (let [p (alg/linear-combination lhs rhs [[k/one hyp1] [(k/lit 2) hyp2]])]
+        (is (env/verifies? (k/env)
+                           (bind-all e/forall' binders (k/eq lhs rhs))
+                           (bind-all e/lam binders (:term p))))))
+    (testing "wrong coefficients are rejected"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (alg/linear-combination lhs rhs [[k/one hyp1] [k/one hyp2]]))))))

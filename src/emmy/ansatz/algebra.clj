@@ -482,6 +482,28 @@
                        :rhs (k/->string (poly-expr ctx R))})))
     (k/trans pl (k/symm pr))))
 
+(defn linear-combination
+  "Proves `lhs = rhs` in `Int` from hypotheses, like Lean's
+  `linear_combination`. `hyps` is a sequence of `[coeff h]`, where `coeff` is a
+  kernel `Int` term and `h` a proof map `{:lhs l :rhs r :term p}` with
+  `p : l = r`. Succeeds when `lhs - rhs = Σ coeff·(l - r)` holds as a
+  polynomial identity (checked by [[prove-eq]]); each `l - r` is then replaced
+  by `0` using `Int.sub_eq_zero_of_eq`. Returns a proof map for `lhs = rhs`."
+  [lhs rhs hyps]
+  (let [diff (fn [{:keys [lhs rhs]}] (k/sub lhs rhs))
+        spread (reduce (fn [acc [c h]] (k/add acc (k/mul c (diff h)))) rhs hyps)
+        zeros  (reduce (fn [acc [c _]] (k/add acc (k/mul c k/zero))) rhs hyps)
+        to-zero (reduce (fn [acc [c h]]
+                          (k/congr-add acc
+                                       (k/congr-mul (k/refl c)
+                                                    (k/lemma "Int.sub_eq_zero_of_eq"
+                                                             (:lhs h) (:rhs h) (:term h)))))
+                        (k/refl rhs)
+                        hyps)]
+    (k/trans (prove-eq lhs spread)
+             (assoc to-zero :lhs spread :rhs zeros)
+             (prove-eq zeros rhs))))
+
 (defn- goal-sides [goal-type]
   (let [[head args] (app-view goal-type)]
     (when-not (and (= head "Eq") (= 3 (count args)) (int-type? (args 0)))
