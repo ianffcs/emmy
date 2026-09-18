@@ -135,9 +135,13 @@
   The implementation tactic used here (pre-dividing by the greater
   of the components) comes from the GNU ISO C++ standard library."
   [^Complex z]
-  (let [x (.-re z)
-        y (.-im z)
-        s (max (g/abs x) (g/abs y))]
+  (let [x  (.-re z)
+        y  (.-im z)
+        ax (g/abs x)
+        ay (g/abs y)
+        ;; Not `max`: components may be exact (e.g. a js/BigInt), and since
+        ;; ClojureScript 1.12 `max` calls `js/isNaN`, which throws on BigInts.
+        s  (if (neg? (v/compare ax ay)) ay ax)]
     (if (g/zero? s) s
         (let [x (g// x s)
               y (g// y s)]

@@ -1392,6 +1392,13 @@
 
 (def ^:private ^:const quarter (g// 1 4))
 
+(defn- largest?
+  "True if `x` is at least as large as each of `ys`. Uses [[v/compare]] rather
+  than [[clojure.core/max]], which since ClojureScript 1.12 calls `js/isNaN`
+  and throws on `js/BigInt` values."
+  [x & ys]
+  (every? #(not (neg? (v/compare x %))) ys))
+
 (defn from-rotation-matrix
   "Given an orthogonal 3x3 matrix M representing a rotation in 3-space, returns
   the unit quaternion that corresponds to the same transformation.
@@ -1400,10 +1407,8 @@
 
   NOTE Orthogonal means, no stretching allowed, only rotation!
 
-  NOTE this routine uses non-generic [[clojure.core/>=]]
-  and [[clojure.core/max]] internally, so if you use numeric entries (or if your
-  entries simplify down to numbers), make sure that they work with these native
-  operations. No `BigInt` in ClojureScript for now, for example."
+  NOTE when the entries simplify down to numbers, they are compared with
+  [[emmy.value/compare]], so any type in Emmy's numeric tower works."
   [M]
   (let [[[r11 r12 r13] [r21 r22 r23] [r31 r32 r33]] M
         q0-2 (g/* quarter (g/+ 1 r11 r22 r33))
@@ -1424,21 +1429,21 @@
         q3-2s (g/simplify q3-2)]
     (cond (and (v/number? q0-2s) (v/number? q1-2s)
                (v/number? q2-2s) (v/number? q3-2s))
-          (cond (>= q0-2s (max q1-2s q2-2s q3-2s))
+          (cond (largest? q0-2s q1-2s q2-2s q3-2s)
                 (let [q0 (g/sqrt q0-2s)
                       q1 (g// q0q1 q0)
                       q2 (g// q0q2 q0)
                       q3 (g// q0q3 q0)]
                   (make q0 q1 q2 q3))
 
-                (>= q1-2s (max q0-2s q2-2s q3-2s))
+                (largest? q1-2s q0-2s q2-2s q3-2s)
                 (let [q1 (g/sqrt q1-2s)
                       q0 (g// q0q1 q1)
                       q2 (g// q1q2 q1)
                       q3 (g// q1q3 q1)]
                   (make q0 q1 q2 q3))
 
-                (>= q2-2s (max q0-2s q1-2s q3-2s))
+                (largest? q2-2s q0-2s q1-2s q3-2s)
                 (let [q2 (g/sqrt q2-2s)
                       q0 (g// q0q2 q2)
                       q1 (g// q1q2 q2)
