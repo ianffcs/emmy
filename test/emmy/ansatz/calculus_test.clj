@@ -48,8 +48,8 @@
            (x/expression-of (c/derivative (fn [x] (g/* x x x)))))))
 
   (testing "rejects non-polynomial input"
-    (is (thrown? clojure.lang.ExceptionInfo (c/derivative (fn [x] (g/sin x)))))
-    (is (thrown? clojure.lang.ExceptionInfo (c/derivative (fn [x] (g// x 2)))))))
+    (is (thrown? clojure.lang.ExceptionInfo (c/derivative g/sin)))
+    (is (= '(/ 1 2N) (x/expression-of (c/derivative (fn [x] (g// x 2))))))))
 
 (deftest derivative-property-test
   (checking "agrees with Emmy's D on random integer polynomials" 50
@@ -74,7 +74,7 @@
       (is (= 14 (x/expression-of ((c/partial-derivative f 1 2) 3 4))))))
 
   (testing "the gradient is a down of partials, like D"
-    (let [f (fn [x y z] (g/* x y z))
+    (let [f g/*
           grad ((c/gradient f 3) 'a 'b 'c)]
       (is (s/down? grad))
       (is (= 3 (count grad))))))

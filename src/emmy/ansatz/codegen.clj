@@ -15,14 +15,16 @@
   rendered as `var` and `param j` as `(nth params j)`."
   ([value var] (->form value var []))
   ([value var params]
-   (let [[tag a b] value]
-     (case (long tag)
+   (if (map? value)
+     (list '/ (->form (:numerator value) var params) (:denominator value))
+     (let [[tag a b] value]
+       (case (long tag)
        0 a
        1 var
        2 (list '+ (->form a var params) (->form b var params))
        3 (list '* (->form a var params) (->form b var params))
        4 (list '- (->form a var params))
-       5 (nth params a)))))
+       5 (nth params a))))))
 
 (defn ->emmy
   "The Emmy symbolic expression for the runtime `PolyExpr` `value`, with `X`

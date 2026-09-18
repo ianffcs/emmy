@@ -180,7 +180,10 @@
   `Emmy.PolyExpr.deriv`."
   [value]
   (install!)
-  ((ax/compiled-fn deriv-name) value))
+  (if (map? value)
+    {:numerator ((ax/compiled-fn deriv-name) (:numerator value))
+     :denominator (:denominator value)}
+    ((ax/compiled-fn deriv-name) value)))
 
 (defn- differentiate
   "`∂expr/∂var` as an Emmy expression, through Ansatz's verified `deriv` and
@@ -190,7 +193,7 @@
         params (ax/params-of ir var)]
     (-> (ax/ir->value ir var params)
         (deriv-poly)
-        (simp/simp-poly)
+        (#(if (map? %) (update % :numerator simp/simp-poly) (simp/simp-poly %)))
         (codegen/->emmy var params))))
 
 (defn derivative

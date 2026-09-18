@@ -41,8 +41,9 @@
     (is (= [3 [5 0] [2 [0 5] [1]]] (ax/->poly-expr '(* x (+ 5 y)) 'y)))
     (is (= 11 (ax/eval-poly (ax/->poly-expr '(+ x (* y z)) 'x) 1 [2 5]))))
 
-  (testing "rational coefficients are not (yet) representable"
-    (is (thrown? clojure.lang.ExceptionInfo (ax/->poly-expr '(/ x 2) 'x))))
+  (testing "rational coefficients retain a verified integer numerator"
+    (is (= {:numerator [3 [1] [0 1]] :denominator 2}
+           (ax/->poly-expr '(/ x 2) 'x))))
 
   (checking "IR ⇄ PolyExpr round trip preserves values" 100
             [form ag/poly-form

@@ -248,35 +248,52 @@
   ([ir var] (ir->value ir var (params-of ir var)))
   ([ir var params]
    (let [index (zipmap params (range))]
-     (letfn [(go [[op a b]]
+     (letfn [(plain [n] [n 1])
+             (combine [op [a da] [b db]]
+               (if (and (= 1 da) (= 1 db))
+                 [(case op :add [(ctor-index :add) a b]
+                           :mul [(ctor-index :mul) a b]) 1]
+                 [(case op
+                    :add [(ctor-index :add) [(ctor-index :mul) a [(ctor-index :const) db]]
+                          [(ctor-index :mul) b [(ctor-index :const) da]]]
+                    :mul [(ctor-index :mul) a b])
+                  (*' da db)]))
+             (go [[op a b]]
                (case op
-                 :lit (if (integer? a)
-                        [(ctor-index :const) a]
-                        (unsupported! (str "PolyExpr coefficients are integers, got " a)
+                 :lit (if (rational? a)
+                        [[(ctor-index :const) (if (integer? a) a (numerator a))]
+                         (if (integer? a) 1 (denominator a))]
+                        (unsupported! (str "PolyExpr coefficients must be exact, got " a)
                                       {:value a}))
-                 :var (cond (= a var) [(ctor-index :X)]
-                            (contains? index a) [(ctor-index :param) (index a)]
+                 :var (cond (= a var) (plain [(ctor-index :X)])
+                            (contains? index a) (plain [(ctor-index :param) (index a)])
                             :else (unsupported! (str "Unexpected variable " a)
                                                 {:var a :var-name var :params params}))
-                 :add [(ctor-index :add) (go a) (go b)]
-                 :sub [(ctor-index :add) (go a) [(ctor-index :neg) (go b)]]
-                 :mul [(ctor-index :mul) (go a) (go b)]
-                 :neg [(ctor-index :neg) (go a)]))]
-       (go ir)))))
+                 :add (combine :add (go a) (go b))
+                 :sub (combine :add (go a) (let [[n d] (go b)] [[(ctor-index :neg) n] d]))
+                 :mul (combine :mul (go a) (go b))
+                 :neg (let [[n d] (go a)] [[(ctor-index :neg) n] d])))]
+       (let [[numerator denominator] (go ir)]
+         (if (= 1 denominator)
+           numerator
+           {:numerator numerator :denominator denominator}))))))
 
 (defn value->ir
   "Converts a runtime `PolyExpr` into IR, with `var` for `X` and `params` for
   the parameters."
   ([value var] (value->ir value var []))
   ([value var params]
-   (let [[tag a b] value]
+   (if (map? value)
+     [:mul [:lit (/ 1 (:denominator value))]
+      (value->ir (:numerator value) var params)]
+     (let [[tag a b] value]
      (case (long tag)
        0 [:lit a]
        1 [:var var]
        2 [:add (value->ir a var params) (value->ir b var params)]
        3 [:mul (value->ir a var params) (value->ir b var params)]
        4 [:neg (value->ir a var params)]
-       5 [:var (nth params a)]))))
+       5 [:var (nth params a)])))))
 
 (defn ->poly-expr
   "Reads an Emmy expression (or bare s-expression) into a runtime `PolyExpr`
@@ -293,4 +310,28 @@
   `j` valued `(nth env j)`, using the compiled `Emmy.PolyExpr.eval`."
   ([value x] (eval-poly value x []))
   ([value x env]
-   ((compiled-fn eval-name) x (fn [j] (nth env j)) value)))
+   (if (map? value)
+     (/ ((compiled-fn eval-name) x (fn [j] (nth env j)) (:numerator value))
+        (:denominator value))
+     ((compiled-fn eval-name) x (fn [j] (nth env j)) value))))
+
+(defn eval-real-poly
+  "Approximate double-valued evaluation of a runtime polynomial. All literals,
+  coordinates and parameters are converted to doubles; rational coefficients
+  are not exact here. No certified error bound is supplied.
+
+  Unlike [[eval-poly]], this function accepts ordinary JVM real values and is
+  deliberately not kernel-executed: Ansatz's bundled Init tier has no analytic
+  real-number construction."
+  ([value x] (eval-real-poly value x []))
+  ([value x env]
+   (if (map? value)
+     (/ (eval-real-poly (:numerator value) x env) (double (:denominator value)))
+     (let [[tag a b] value]
+       (case (long tag)
+         0 (double a)
+         1 (double x)
+         2 (+ (eval-real-poly a x env) (eval-real-poly b x env))
+         3 (* (eval-real-poly a x env) (eval-real-poly b x env))
+         4 (- (eval-real-poly a x env))
+         5 (double (nth env a)))))))
