@@ -54,4 +54,6 @@
    emmy.pattern.rule/ruleset hooks.emmy.pattern.rule/ruleset
    emmy.pattern.rule/template hooks.emmy.pattern.rule/template
 
-   emmy.ansatz.rules/defruleset hooks.emmy.ansatz.rules/defruleset}}}
+   emmy.ansatz.rules/defruleset hooks.emmy.ansatz.rules/defruleset
+   emmy.ansatz.analysis.kernel/forall hooks.emmy.ansatz.analysis/typed-binders
+   emmy.ansatz.analysis.kernel/lambda hooks.emmy.ansatz.analysis/typed-binders}}}
