@@ -6,7 +6,8 @@
             [emmy.generic :as g]))
 
 (defn poly-form-over
-  "Bare Emmy s-expressions for integer polynomials in the symbols `syms`."
+  "Bare Emmy s-expressions for polynomials with rational coefficients in the
+  symbols `syms`."
   [syms]
   (gen/recursive-gen
    (fn [inner]
@@ -18,7 +19,8 @@
        (gen/fmap (fn [[b n]] (list 'expt b n))
                  (gen/tuple inner (gen/choose 0 3)))]))
    (gen/one-of [(gen/elements syms)
-                (gen/choose -20 20)])))
+                (gen/choose -20 20)
+                (gen/elements [1/2 -3/4 5/3 -7/2])])))
 
 (def poly-form
   "Bare Emmy s-expressions for integer polynomials in `x`."

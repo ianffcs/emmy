@@ -111,7 +111,9 @@
 (defn- c [s] (k/const (str prefix s)))
 (def ^:private int-pair (t/app (k/const "Prod" l0 l0) k/int-type k/int-type))
 
-(defn- lt [a b]
+(defn lt
+  "The kernel proposition `a < b` in `Int`."
+  [a b]
   (t/app (k/const "LT.lt" l0) k/int-type (k/const "Int.instLTInt") a b))
 
 (defn- positive-den [p]
@@ -125,15 +127,19 @@
 
 (defn- num [r] (t/app (c "num") r))
 (defn- den [r] (t/app (c "den") r))
-(defn- equiv [a b] (t/app (c "Equiv") a b))
+(defn equiv
+  "The kernel proposition `Emmy.Analysis.Rational.Equiv a b`."
+  [a b]
+  (t/app (c "Equiv") a b))
 
 (defn- hyp
   "Proof map for a hypothesis `h : Equiv a b`, i.e. `num a * den b = num b * den a`."
   [a b h]
   {:lhs (k/mul (num a) (den b)) :rhs (k/mul (num b) (den a)) :term h})
 
-(defn- make-rep
-  "`⟨(n, d), proof⟩ : Rep` given `proof : 0 < d`."
+(defn make-rep
+  "The kernel term `⟨(n, d), proof⟩ : Emmy.Analysis.Rational.Rep`, given a
+  kernel proof `proof : 0 < d`."
   [n d proof]
   (t/app (k/const "Subtype.mk" l1) int-pair rep-predicate
          (t/app (k/const "Prod.mk" l0 l0) k/int-type k/int-type n d)

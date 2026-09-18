@@ -15,15 +15,16 @@
   (x/expression-of (s/simplify form)))
 
 (defn- unit-free?
-  "True if `form` contains no `0 + _`, `_ * 1`, `0 * _`, `- - _` or
-  arithmetic on two constants."
+  "True if `form` contains no `0 + _`, `_ * 1`, `0 * _`, `- - _`, negated
+  constant, or arithmetic on two integer constants. (Fractions are not folded
+  with other constants; Emmy's simplifier does that downstream.)"
   [form]
   (if-not (seq? form)
     true
     (let [[op a b] form]
       (and (not (case op
-                  + (or (= 0 a) (= 0 b) (and (number? a) (number? b)))
-                  * (or (#{0 1} a) (#{0 1} b) (and (number? a) (number? b)))
+                  + (or (= 0 a) (= 0 b) (and (integer? a) (integer? b)))
+                  * (or (#{0 1} a) (#{0 1} b) (and (integer? a) (integer? b)))
                   - (or (number? a) (and (seq? a) (= '- (first a)) (= 2 (count a))))
                   false))
            (every? unit-free? (rest form))))))

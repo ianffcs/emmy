@@ -34,6 +34,12 @@
     `simp_correct`; `simplifier` runs a rule set on Emmy expressions to a
     fixpoint, like `rule-simplifier`
 
+  - rational coefficients are part of the verified AST: `Emmy.PolyExpr.frac`
+    (`p/(q+1)`), rational semantics `num`/`den`/`value` in terms of
+    `Emmy.Analysis.Rational`, and `deriv_correct`, `simp_correct` and rule-set
+    soundness restated over rational values, replacing the unverified
+    host-side denominator scaling
+
   - `emmy.ansatz.match` is a pattern-matching front end for Ansatz
     definitions: it flattens nested and mixed literal/variable patterns into a
     decision tree and lambda-lifts inner `match`es into auxiliary definitions,

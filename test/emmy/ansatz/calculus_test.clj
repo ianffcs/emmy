@@ -1,9 +1,11 @@
 #_"SPDX-License-Identifier: GPL-3.0"
 
 (ns emmy.ansatz.calculus-test
-  (:require [clojure.string :as str]
+  (:require [ansatz.kernel.env :as env]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [com.gfredericks.test.chuck.clojure-test :refer [checking]]
+            [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.calculus :as c]
             [emmy.ansatz.codegen :as codegen]
             [emmy.ansatz.core :as k]
@@ -49,7 +51,7 @@
 
   (testing "rejects non-polynomial input"
     (is (thrown? clojure.lang.ExceptionInfo (c/derivative g/sin)))
-    (is (= '(/ 1 2N) (x/expression-of (c/derivative (fn [x] (g// x 2))))))))
+    (is (= 1/2 (c/derivative (fn [x] (g// x 2)))))))
 
 (deftest derivative-property-test
   (checking "agrees with Emmy's D on random integer polynomials" 50
@@ -85,3 +87,23 @@
             (let [f (ag/->fn-of '[x y z] form)]
               (is (every? zero-expression?
                           (map g/- ((c/gradient f 3) 'a 'b 'c) ((D f) 'a 'b 'c)))))))
+
+(deftest rational-coefficient-test
+  (testing "rational coefficients agree with Emmy's D"
+    (doseq [f [(fn [x] (g// (g/* x x) 2))
+               (fn [x] (g/* 1/3 x x x))
+               (fn [x] (g/+ (g/* -3/4 x) 5/7))
+               (fn [x] (g/* (g/+ x 1/2) (g/- x 2/3)))]]
+      (is (same-derivative? f))))
+  (testing "x²/2 differentiates to x and x³/3 to x²"
+    (is (zero-expression? (g/- (c/derivative '(/ (* x x) 2)) 'x)))
+    (is (zero-expression? (g/- (c/derivative '(* 1/3 (expt x 3))) (g/* 'x 'x))))))
+
+(deftest rational-theorems-test
+  (c/install!)
+  (doseq [n ["Emmy.PolyExpr.den_pos" "Emmy.PolyExpr.deriv_correct"
+             "Emmy.PolyExpr.deriv_correct_add" "Emmy.PolyExpr.deriv_correct_mul"
+             "Emmy.PolyExpr.deriv_correct_neg"]]
+    (let [{:keys [statement proof]} (t/declaration n)]
+      (is (env/verifies? (k/env) statement proof) n)
+      (is (not (env/verifies? (k/env) (k/eq k/zero (k/lit 1)) proof)) n))))

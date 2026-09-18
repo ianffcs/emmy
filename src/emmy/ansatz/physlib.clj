@@ -6,9 +6,10 @@
 
   `time-deriv` and `space-deriv` have the same operational interpretation as
   physlib's coordinate derivatives: parameters not selected as the coordinate
-  are held fixed. The integer numerator derivative is verified in Ansatz;
-  rational wrapping is host-side glue. Approximate evaluation uses doubles,
-  not constructed reals or analytic `HasDerivAt` certification."
+  are held fixed. The derivative, including rational coefficients, is
+  verified in Ansatz (`Emmy.PolyExpr.deriv_correct`, stated over rational
+  values). Approximate evaluation uses doubles, not constructed reals or
+  analytic `HasDerivAt` certification."
   (:require [emmy.ansatz.calculus :as calculus]
             [emmy.ansatz.expression :as expression]
             [emmy.ansatz.simplify :as simplify]))
@@ -22,8 +23,7 @@
   ([expr var x]
    (let [poly (expression/->poly-expr expr var)
          deriv (calculus/deriv-poly poly)
-         deriv (if (map? deriv) (update deriv :numerator simplify/simp-poly)
-                   (simplify/simp-poly deriv))]
+         deriv (simplify/simp-poly deriv)]
      {:kind ::polynomial-derivative-report :at x :poly poly :derivative deriv
       :certified? false
       :theorem calculus/theorem-name

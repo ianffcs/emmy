@@ -41,9 +41,8 @@
     (is (= [3 [5 0] [2 [0 5] [1]]] (ax/->poly-expr '(* x (+ 5 y)) 'y)))
     (is (= 11 (ax/eval-poly (ax/->poly-expr '(+ x (* y z)) 'x) 1 [2 5]))))
 
-  (testing "rational coefficients retain a verified integer numerator"
-    (is (= {:numerator [3 [1] [0 1]] :denominator 2}
-           (ax/->poly-expr '(/ x 2) 'x))))
+  (testing "rational coefficients become frac nodes"
+    (is (= [3 [1] [6 1 1]] (ax/->poly-expr '(/ x 2) 'x))))
 
   (checking "IR ⇄ PolyExpr round trip preserves values" 100
             [form ag/poly-form
@@ -62,6 +61,22 @@
 (deftest multivariate-eval-test
   (ax/install!)
   (checking "the compiled eval agrees with the IR with parameters" 100
+            [form (ag/poly-form-over '[x y z])
+             vals (gen/vector (gen/choose -20 20) 3)]
+            (let [ir (ax/->ir form)
+                  params (ax/params-of ir 'x)
+                  env (zipmap '[x y z] vals)]
+              (is (= (ax/evaluate ir env)
+                     (ax/eval-poly (ax/ir->value ir 'x params) (env 'x) (mapv env params)))))))
+
+(deftest rational-values-test
+  (ax/install!)
+  (testing "fractions are frac nodes, p/(q+1)"
+    (is (= [6 -3 3] (ax/->poly-expr -3/4 'x)))
+    (is (= -3/4 (ax/eval-poly (ax/->poly-expr -3/4 'x) 0))))
+  (testing "evaluation is exact"
+    (is (= 21/2 (ax/eval-poly (ax/->poly-expr '(+ (* 1/2 x x) (* 3 y)) 'x) 3 [2]))))
+  (checking "the compiled num/den agrees with the IR on rational forms" 100
             [form (ag/poly-form-over '[x y z])
              vals (gen/vector (gen/choose -20 20) 3)]
             (let [ir (ax/->ir form)

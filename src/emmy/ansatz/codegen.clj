@@ -12,19 +12,19 @@
 
 (defn ->form
   "The bare Emmy s-expression for the runtime `PolyExpr` `value`, with `X`
-  rendered as `var` and `param j` as `(nth params j)`."
+  rendered as `var`, `param j` as `(nth params j)` and `frac p q` as the
+  ratio `p/(q+1)`."
   ([value var] (->form value var []))
   ([value var params]
-   (if (map? value)
-     (list '/ (->form (:numerator value) var params) (:denominator value))
-     (let [[tag a b] value]
-       (case (long tag)
+   (let [[tag a b] value]
+     (case (long tag)
        0 a
        1 var
        2 (list '+ (->form a var params) (->form b var params))
        3 (list '* (->form a var params) (->form b var params))
        4 (list '- (->form a var params))
-       5 (nth params a))))))
+       5 (nth params a)
+       6 (/ a (inc b))))))
 
 (defn ->emmy
   "The Emmy symbolic expression for the runtime `PolyExpr` `value`, with `X`

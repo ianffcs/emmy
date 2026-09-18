@@ -70,3 +70,12 @@
               (is (= (ax/eval-poly v x)
                      (ax/eval-poly (r/rewrite test-units v) x)
                      (ax/eval-poly (r/rewrite test-distribute v) x))))))
+
+(r/defruleset test-fractions
+  (* 1/2 (* 2 ?a)) => ?a
+  (* 2 (* 1/2 ?a)) => ?a)
+
+(deftest rational-rules-test
+  (is (= 'x (simplify-form test-fractions '(* 1/2 (* 2 x)))))
+  (is (thrown-with-msg? clojure.lang.ExceptionInfo #"rule 0 is not sound"
+                        (r/ruleset* 'test-bad-fraction '[(* 1/2 ?a) => ?a]))))

@@ -52,6 +52,24 @@ No `Real` complete ordered field, completeness axiom, or `HasDerivAt` axiom is
 introduced to bypass these obligations. The provisional construction lives under
 `Emmy.Analysis.RealConstruction`, rather than claiming compatibility with Mathlib.
 
+## Rational coefficients in the verified calculus
+
+`Emmy.PolyExpr` has a `frac p q` constructor (`p/(q+1)`). Expressions are
+interpreted as rationals: `num`/`den` with `den_pos`, packaged as
+`value : … → Emmy.Analysis.Rational.Rep`. Checked theorems:
+
+- `deriv_correct` in cross-multiplied Carathéodory form (no division in the
+  kernel), with step lemmas `deriv_correct_add|mul|neg` proved by
+  `linear-combination`;
+- `simp_correct : Equiv (value (simp e)) (value e)`, by `equiv_trans` and the
+  `Rational.*_congr` lemmas; smart-constructor lemmas by `int_ring_split`;
+- per-rule soundness, `step_correct` and `simp_correct` for every rule set, in
+  the same `Equiv` form.
+
+The earlier host-side scaling (`{:numerator :denominator}`) is removed: rational
+coefficients are no longer trusted glue. Fractions are not yet folded with each
+other by `simp`; Emmy's simplifier does that downstream.
+
 ## API correction
 
 The previous `physlib/has-deriv-at` map was not a proof. It is replaced by

@@ -19,8 +19,9 @@
   Emmy.Rules.units.simp : PolyExpr → PolyExpr   -- step, applied bottom-up
 
   theorem Emmy.Rules.units.rule_<i>     -- each rule preserves eval
-  theorem Emmy.Rules.units.step_correct : eval x ρ (step e) = eval x ρ e
-  theorem Emmy.Rules.units.simp_correct : eval x ρ (simp e) = eval x ρ e
+  theorem Emmy.Rules.units.step_correct : value x ρ (step e) ≃ value x ρ e
+  theorem Emmy.Rules.units.simp_correct : value x ρ (simp e) ≃ value x ρ e
+    -- ≃ is Emmy.Analysis.Rational.Equiv: equal rational values
   ```
 
   An unsound rule is rejected when the set is defined: its `rule_<i>` lemma
@@ -35,7 +36,7 @@
   - `?a` matches any subexpression (`_` matches without binding);
   - `(? ?c integer?)` matches an integer constant and binds its value
     (`int?` and `v/integral?` are accepted as the predicate too);
-  - integer literals and `x` match themselves;
+  - integer and fraction literals (e.g. `1/2`) and `x` match themselves;
   - `(+ a b)`, `(* a b)`, `(- a)` and `(- a b)` (read as `a + (-b)`) match
     the corresponding nodes. Operators are binary, as in `Emmy.PolyExpr`.
 
@@ -46,6 +47,8 @@
   (:require [ansatz.core :as a]
             [clojure.walk :as walk]
             [emmy.ansatz.algebra :as alg]
+            [emmy.ansatz.analysis.kernel :as t]
+            [emmy.ansatz.analysis.rational :as rat]
             [emmy.ansatz.codegen :as codegen]
             [emmy.ansatz.core :as k]
             [emmy.ansatz.expression :as ax]
@@ -98,6 +101,8 @@
                               {:pattern p}))
               (ps/binding? p) (bind! (var-sym p) :poly)
               (integer? p) (list 'Emmy.PolyExpr.const (int-pattern p))
+              (ratio? p) (list 'Emmy.PolyExpr.frac (int-pattern (numerator p))
+                               (dec (denominator p)))
               (= 'x p) '(Emmy.PolyExpr.X)
               (seq? p)
               (let [[op & args] p]
@@ -140,6 +145,8 @@
     (letfn [(go [s]
               (cond
                 (int-valued? s) (list 'Emmy.PolyExpr.const (int-term s))
+                (ratio? s) (list 'Emmy.PolyExpr.frac (int-pattern (numerator s))
+                                 (dec (denominator s)))
                 (ps/binding? s) (var-sym s)
                 (= 'x s) 'Emmy.PolyExpr.X
                 (seq? s)
@@ -179,7 +186,7 @@
 
 ;; ## Installation
 
-(def ^:private eval-rules (mapv first ax/eval-equations))
+(def ^:private eval-rules (mapv first ax/semantic-equations))
 
 (defn- kname [set-name & parts]
   (symbol (apply str "Emmy.Rules." set-name parts)))
@@ -187,8 +194,15 @@
 (defn- binder [[v kind]]
   [v :- (if (= kind :int) 'Int 'Emmy.PolyExpr)])
 
-(defn- eval-at [term]
-  (list 'Emmy.PolyExpr.eval 'x 'rho term))
+(defn- cross
+  "`num x ρ l · den r = num x ρ r · den l`, i.e. `Rational.Equiv` of the
+  values of `l` and `r`, as an `Int` equation."
+  [l r]
+  (list '= 'Int
+        (list 'Int.mul (list 'Emmy.PolyExpr.num 'x 'rho l) (list 'Emmy.PolyExpr.den r))
+        (list 'Int.mul (list 'Emmy.PolyExpr.num 'x 'rho r) (list 'Emmy.PolyExpr.den l))))
+
+(defn- value-of [e] (list 'Emmy.PolyExpr.value 'x 'rho e))
 
 (defn- prove-rule! [set-name i {:keys [lhs rhs pattern skeleton vars]}]
   (let [nm (kname set-name ".rule_" i)
@@ -199,7 +213,7 @@
          (a/prove-theorem nm
                           (vec (concat (mapcat binder (concat vars extra))
                                        '[x :- Int rho :- (=> Nat Int)]))
-                          (list '= 'Int (eval-at term) (eval-at skeleton))
+                          (cross term skeleton)
                           [(list 'int_ring eval-rules)]))
         (catch Throwable t
           (throw (ex-info (str "ruleset " set-name ": rule " i " is not sound: "
@@ -214,7 +228,8 @@
         ['(Emmy.PolyExpr.add a b) (list step (list 'Emmy.PolyExpr.add (list simp 'a) (list simp 'b)))]
         ['(Emmy.PolyExpr.mul a b) (list step (list 'Emmy.PolyExpr.mul (list simp 'a) (list simp 'b)))]
         ['(Emmy.PolyExpr.neg a) (list step (list 'Emmy.PolyExpr.neg (list simp 'a)))]
-        ['(Emmy.PolyExpr.param j) (list step '(Emmy.PolyExpr.param j))]))
+        ['(Emmy.PolyExpr.param j) (list step '(Emmy.PolyExpr.param j))]
+        ['(Emmy.PolyExpr.frac p q) (list step '(Emmy.PolyExpr.frac p q))]))
 
 (defn- simp-equations [simp step]
   (let [P 'Emmy.PolyExpr, app (fn [& xs] (apply list xs))]
@@ -232,7 +247,38 @@
       (app '= P (app simp '(Emmy.PolyExpr.neg a))
            (app step (app 'Emmy.PolyExpr.neg (app simp 'a))))]
      [(symbol (str simp "_param")) '[j :- Nat]
-      (app '= P (app simp '(Emmy.PolyExpr.param j)) (app step '(Emmy.PolyExpr.param j)))]]))
+      (app '= P (app simp '(Emmy.PolyExpr.param j)) (app step '(Emmy.PolyExpr.param j)))]
+     [(symbol (str simp "_frac")) '[p :- Int q :- Nat]
+      (app '= P (app simp '(Emmy.PolyExpr.frac p q)) (app step '(Emmy.PolyExpr.frac p q)))]]))
+
+(defn- simp-proof
+  "Tactics proving `Equiv (value x ρ (simp e)) (value x ρ e)` by induction:
+  each case is `step_correct` on the rebuilt node, composed by transitivity
+  with congruence on the induction hypotheses."
+  [simp step step-thm]
+  (let [leaf (fn [node] (list 'exact (list step-thm node 'x 'rho)))
+        node (fn [op congr children ihs]
+               (let [simplified (map #(list simp %) children)
+                     rebuilt (apply list op simplified)]
+                 (list 'exact
+                       (list 'Emmy.Analysis.Rational.equiv_trans
+                             (value-of (list step rebuilt))
+                             (value-of rebuilt)
+                             (value-of (apply list op children))
+                             (list step-thm rebuilt 'x 'rho)
+                             (concat (list congr)
+                                     (mapcat (fn [sc c] [(value-of sc) (value-of c)])
+                                             simplified children)
+                                     ihs)))))]
+    ;; cases: const, X, add, mul, neg, param, frac
+    ['(induction e)
+     (leaf '(Emmy.PolyExpr.const c))
+     (leaf 'Emmy.PolyExpr.X)
+     (node 'Emmy.PolyExpr.add 'Emmy.Analysis.Rational.add_congr '[a b] '[ih_a ih_b])
+     (node 'Emmy.PolyExpr.mul 'Emmy.Analysis.Rational.mul_congr '[a b] '[ih_a ih_b])
+     (node 'Emmy.PolyExpr.neg 'Emmy.Analysis.Rational.neg_congr '[a] '[ih_a])
+     (leaf '(Emmy.PolyExpr.param j))
+     (leaf '(Emmy.PolyExpr.frac fnum fden))]))
 
 (defonce ^:private installed-rules (atom {}))
 
@@ -266,19 +312,18 @@
         (when-not (k/installed? step-thm)
           (k/quietly
            (a/prove-theorem step-thm '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
-                            (list '= 'Int (eval-at (list step 'e)) (eval-at 'e))
+                            (cross (list step 'e) 'e)
                             [(list 'int_ring_split (into [step] eval-rules))])))
         (ax/define! simp '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
                     (simp-body simp step))
         (ax/prove-equations! simp-eqs)
         (when-not (k/installed? simp-thm)
-          (let [rs (vec (concat (map first simp-eqs) [step-thm] eval-rules))
-                case (fn [& ihs] (list 'int_ring (into rs ihs)))]
-            (k/quietly
-             (a/prove-theorem simp-thm '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
-                              (list '= 'Int (eval-at (list simp 'e)) (eval-at 'e))
-                              ['(induction e) (case) (case)
-                               (case 'ih_a 'ih_b) (case 'ih_a 'ih_b) (case 'ih_a) (case)])))))
+          (k/quietly
+           (a/prove-theorem simp-thm '[e x rho]
+                            (t/forall [[e ax/poly-type] [x k/int-type] [rho ax/env-type]]
+                              (rat/equiv (ax/value-term x rho (t/app (k/const (str simp)) e))
+                                         (ax/value-term x rho e)))
+                            (simp-proof simp step step-thm)))))
       (swap! installed-rules assoc set-name rules)
       {:name set-name
        :rules rules
