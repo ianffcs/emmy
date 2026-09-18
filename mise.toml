@@ -1,0 +1,13 @@
+# Tool versions for developing Emmy. `mise install` sets them all up.
+
+[tools]
+# JVM for Clojure, the tests and shadow-cljs.
+java = "temurin-21.0.0+35.0.LTS"
+# Clojure CLI (deps.edn); matches the project's Clojure 1.12.5.
+clojure = "1.12.5.1664"
+# Task runner for bb.edn (bb test:clj, bb lint, …).
+babashka = "1.13.223"
+# npm dependencies and the ClojureScript test runner (npm run test).
+node = "22.23.2"
+# Linter used by bb lint.
+clj-kondo = "2026.08.04"
