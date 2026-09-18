@@ -52,4 +52,6 @@
    emmy.pattern.rule/pattern hooks.emmy.pattern.rule/pattern
    emmy.pattern.rule/rule hooks.emmy.pattern.rule/rule
    emmy.pattern.rule/ruleset hooks.emmy.pattern.rule/ruleset
-   emmy.pattern.rule/template hooks.emmy.pattern.rule/template}}}
+   emmy.pattern.rule/template hooks.emmy.pattern.rule/template
+
+   emmy.ansatz.rules/defruleset hooks.emmy.ansatz.rules/defruleset}}}
