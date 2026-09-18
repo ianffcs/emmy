@@ -19,8 +19,8 @@
   Emmy.Rules.units.simp : PolyExpr → PolyExpr   -- step, applied bottom-up
 
   theorem Emmy.Rules.units.rule_<i>     -- each rule preserves eval
-  theorem Emmy.Rules.units.step_correct : eval x (step e) = eval x e
-  theorem Emmy.Rules.units.simp_correct : eval x (simp e) = eval x e
+  theorem Emmy.Rules.units.step_correct : eval x ρ (step e) = eval x ρ e
+  theorem Emmy.Rules.units.simp_correct : eval x ρ (simp e) = eval x ρ e
   ```
 
   An unsound rule is rejected when the set is defined: its `rule_<i>` lemma
@@ -188,7 +188,7 @@
   [v :- (if (= kind :int) 'Int 'Emmy.PolyExpr)])
 
 (defn- eval-at [term]
-  (list 'Emmy.PolyExpr.eval 'x term))
+  (list 'Emmy.PolyExpr.eval 'x 'rho term))
 
 (defn- prove-rule! [set-name i {:keys [lhs rhs pattern skeleton vars]}]
   (let [nm (kname set-name ".rule_" i)
@@ -197,7 +197,8 @@
       (try
         (k/quietly
          (a/prove-theorem nm
-                          (vec (concat (mapcat binder (concat vars extra)) '[x :- Int]))
+                          (vec (concat (mapcat binder (concat vars extra))
+                                       '[x :- Int rho :- (=> Nat Int)]))
                           (list '= 'Int (eval-at term) (eval-at skeleton))
                           [(list 'int_ring eval-rules)]))
         (catch Throwable t
@@ -212,7 +213,8 @@
         ['(Emmy.PolyExpr.X) (list step 'Emmy.PolyExpr.X)]
         ['(Emmy.PolyExpr.add a b) (list step (list 'Emmy.PolyExpr.add (list simp 'a) (list simp 'b)))]
         ['(Emmy.PolyExpr.mul a b) (list step (list 'Emmy.PolyExpr.mul (list simp 'a) (list simp 'b)))]
-        ['(Emmy.PolyExpr.neg a) (list step (list 'Emmy.PolyExpr.neg (list simp 'a)))]))
+        ['(Emmy.PolyExpr.neg a) (list step (list 'Emmy.PolyExpr.neg (list simp 'a)))]
+        ['(Emmy.PolyExpr.param j) (list step '(Emmy.PolyExpr.param j))]))
 
 (defn- simp-equations [simp step]
   (let [P 'Emmy.PolyExpr, app (fn [& xs] (apply list xs))]
@@ -228,7 +230,9 @@
            (app step (app 'Emmy.PolyExpr.mul (app simp 'a) (app simp 'b))))]
      [(symbol (str simp "_neg")) '[a :- Emmy.PolyExpr]
       (app '= P (app simp '(Emmy.PolyExpr.neg a))
-           (app step (app 'Emmy.PolyExpr.neg (app simp 'a))))]]))
+           (app step (app 'Emmy.PolyExpr.neg (app simp 'a))))]
+     [(symbol (str simp "_param")) '[j :- Nat]
+      (app '= P (app simp '(Emmy.PolyExpr.param j)) (app step '(Emmy.PolyExpr.param j)))]]))
 
 (defonce ^:private installed-rules (atom {}))
 
@@ -261,7 +265,7 @@
                                    [['_ 'e]])))
         (when-not (k/installed? step-thm)
           (k/quietly
-           (a/prove-theorem step-thm '[e :- Emmy.PolyExpr x :- Int]
+           (a/prove-theorem step-thm '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
                             (list '= 'Int (eval-at (list step 'e)) (eval-at 'e))
                             [(list 'int_ring_split (into [step] eval-rules))])))
         (ax/define! simp '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
@@ -271,10 +275,10 @@
           (let [rs (vec (concat (map first simp-eqs) [step-thm] eval-rules))
                 case (fn [& ihs] (list 'int_ring (into rs ihs)))]
             (k/quietly
-             (a/prove-theorem simp-thm '[e :- Emmy.PolyExpr x :- Int]
+             (a/prove-theorem simp-thm '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
                               (list '= 'Int (eval-at (list simp 'e)) (eval-at 'e))
                               ['(induction e) (case) (case)
-                               (case 'ih_a 'ih_b) (case 'ih_a 'ih_b) (case 'ih_a)])))))
+                               (case 'ih_a 'ih_b) (case 'ih_a 'ih_b) (case 'ih_a) (case)])))))
       (swap! installed-rules assoc set-name rules)
       {:name set-name
        :rules rules
@@ -307,12 +311,15 @@
          (if (or (= v v') (zero? n)) v' (recur v' (dec n))))))))
 
 (defn simplifier
-  "Returns a function that rewrites an Emmy polynomial expression in `var`
-  (default `'x`) with `ruleset`, like Emmy's `rule-simplifier`, and returns
-  the result as an Emmy expression."
+  "Returns a function that rewrites an Emmy polynomial expression with
+  `ruleset`, like Emmy's `rule-simplifier`, and returns the result as an Emmy
+  expression. `var` (default `'x`) is the variable the rules' `x` stands for;
+  other symbols are parameters, which patterns match only through `?a` or `_`."
   ([ruleset] (simplifier ruleset 'x))
   ([ruleset var]
    (fn [expr]
-     (-> (ax/->poly-expr expr var)
-         (->> (rewrite ruleset))
-         (codegen/->emmy var)))))
+     (let [ir (ax/->ir expr)
+           params (ax/params-of ir var)]
+       (-> (ax/ir->value ir var params)
+           (->> (rewrite ruleset))
+           (codegen/->emmy var params))))))

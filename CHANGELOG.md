@@ -17,7 +17,11 @@
   - `emmy.ansatz.calculus` defines `Emmy.PolyExpr.deriv` in Ansatz and proves
     `deriv_correct` (Carathéodory's characterization of the derivative) by
     induction; `emmy.ansatz.calculus/derivative` runs the compiled, verified
-    `deriv` and returns an Emmy expression
+    `deriv` and returns an Emmy expression. Expressions may have several
+    variables: the others are parameters held fixed by an environment in the
+    theorem, so `derivative` computes partial derivatives, and
+    `partial-derivative` and `gradient` mirror `partial` and `D` for
+    functions of several arguments
 
   - `emmy.ansatz.simplify` defines a verified simplifier `Emmy.PolyExpr.simp`
     (units, annihilation, constant folding, double negation) and proves

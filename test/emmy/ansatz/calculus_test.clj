@@ -11,7 +11,8 @@
             [emmy.calculus.derivative :refer [D]]
             [emmy.expression :as x]
             [emmy.generic :as g]
-            [emmy.simplify]))
+            [emmy.simplify]
+            [emmy.structure :as s]))
 
 (defn- zero-expression? [expr]
   (= 0 (x/expression-of (g/simplify expr))))
@@ -59,3 +60,28 @@
   (is (= '(+ (* 3 x) (- 1)) (codegen/->form [2 [3 [0 3] [1]] [4 [0 1]]] 'x)))
   (is (= 'y (codegen/->emmy [1] 'y)))
   (is (= 7 (codegen/->emmy [0 7] 'x))))
+
+(deftest multivariate-test
+  (testing "symbols other than the variable are held constant"
+    (is (zero-expression? (g/- (c/derivative (g/* 'x 'y 'y) 'x) (g/* 'y 'y))))
+    (is (zero-expression? (g/- (c/derivative (g/* 'x 'y 'y) 'y) (g/* 2 'x 'y))))
+    (is (= 0 (c/derivative (g/* 3 'y) 'x))))
+
+  (testing "partial derivatives of functions of several arguments"
+    (let [f (fn [x y] (g/+ (g/* x x y) (g/* 5 y)))]
+      (is (zero-expression? (g/- ((c/partial-derivative f 0 2) 'a 'b) (g/* 2 'a 'b))))
+      (is (zero-expression? (g/- ((c/partial-derivative f 1 2) 'a 'b) (g/+ (g/* 'a 'a) 5))))
+      (is (= 14 (x/expression-of ((c/partial-derivative f 1 2) 3 4))))))
+
+  (testing "the gradient is a down of partials, like D"
+    (let [f (fn [x y z] (g/* x y z))
+          grad ((c/gradient f 3) 'a 'b 'c)]
+      (is (s/down? grad))
+      (is (= 3 (count grad))))))
+
+(deftest gradient-property-test
+  (checking "agrees with Emmy's D on random polynomials in three variables" 30
+            [form (ag/poly-form-over '[x y z])]
+            (let [f (ag/->fn-of '[x y z] form)]
+              (is (every? zero-expression?
+                          (map g/- ((c/gradient f 3) 'a 'b 'c) ((D f) 'a 'b 'c)))))))

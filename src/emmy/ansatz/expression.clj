@@ -8,15 +8,22 @@
 
   ```
   inductive Emmy.PolyExpr
-    | const (c : Int) | X | add (a b : PolyExpr) | mul (a b : PolyExpr) | neg (a : PolyExpr)
+    | const (c : Int) | X | add (a b : PolyExpr) | mul (a b : PolyExpr)
+    | neg (a : PolyExpr) | param (j : Nat)
 
-  Emmy.PolyExpr.eval (x : Int) : PolyExpr → Int      -- denotation
+  Emmy.PolyExpr.eval (x : Int) (ρ : Nat → Int) : PolyExpr → Int   -- denotation
   ```
 
-  with one equation lemma per constructor (`Emmy.PolyExpr.eval_add`, …) for
-  use by `int_ring` (see [[emmy.ansatz.algebra]]). At runtime a `PolyExpr` is a
-  tagged vector `[ctor-index field…]`, e.g. `x * (5 + x)` is
-  `[3 [1] [2 [0 5] [1]]]`, and `eval` is a compiled Clojure function.
+  `X` is the distinguished variable (the one a derivative is taken with
+  respect to) and `param j` is any other variable, valued by the environment
+  `ρ`. Multivariate expressions are read with one chosen variable as `X` and
+  the rest as parameters, numbered in sorted order.
+
+  Each constructor has an equation lemma (`Emmy.PolyExpr.eval_add`, …) for use
+  by `int_ring` (see [[emmy.ansatz.algebra]]). At runtime a `PolyExpr` is a
+  tagged vector `[ctor-index field…]`, e.g. `x * (5 + y)` with `y` as
+  parameter 0 is `[3 [1] [2 [0 5] [5 0]]]`, and `eval` is a compiled Clojure
+  function taking `ρ` as a Clojure function.
 
   On the Emmy side, symbolic expressions are first read into a small IR:
 
@@ -136,7 +143,7 @@
 ;; ## The Ansatz AST
 
 (def ^:private ctor-index
-  {:const 0 :X 1 :add 2 :mul 3 :neg 4})
+  {:const 0 :X 1 :add 2 :mul 3 :neg 4 :param 5})
 
 (def type-name "Emmy.PolyExpr")
 
@@ -146,25 +153,28 @@
   '(match e
      [(Emmy.PolyExpr.const c) c]
      [(Emmy.PolyExpr.X) x]
-     [(Emmy.PolyExpr.add a b) (Int.add (Emmy.PolyExpr.eval x a) (Emmy.PolyExpr.eval x b))]
-     [(Emmy.PolyExpr.mul a b) (Int.mul (Emmy.PolyExpr.eval x a) (Emmy.PolyExpr.eval x b))]
-     [(Emmy.PolyExpr.neg a) (Int.neg (Emmy.PolyExpr.eval x a))]))
+     [(Emmy.PolyExpr.add a b) (Int.add (Emmy.PolyExpr.eval x rho a) (Emmy.PolyExpr.eval x rho b))]
+     [(Emmy.PolyExpr.mul a b) (Int.mul (Emmy.PolyExpr.eval x rho a) (Emmy.PolyExpr.eval x rho b))]
+     [(Emmy.PolyExpr.neg a) (Int.neg (Emmy.PolyExpr.eval x rho a))]
+     [(Emmy.PolyExpr.param j) (rho j)]))
 
 (def eval-equations
   "Defining equations of `Emmy.PolyExpr.eval`, as `[name params statement]`."
-  '[[Emmy.PolyExpr.eval_const [x :- Int c :- Int]
-     (= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.const c)) c)]
-    [Emmy.PolyExpr.eval_X [x :- Int]
-     (= Int (Emmy.PolyExpr.eval x Emmy.PolyExpr.X) x)]
-    [Emmy.PolyExpr.eval_add [x :- Int a :- Emmy.PolyExpr b :- Emmy.PolyExpr]
-     (= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.add a b))
-        (Int.add (Emmy.PolyExpr.eval x a) (Emmy.PolyExpr.eval x b)))]
-    [Emmy.PolyExpr.eval_mul [x :- Int a :- Emmy.PolyExpr b :- Emmy.PolyExpr]
-     (= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.mul a b))
-        (Int.mul (Emmy.PolyExpr.eval x a) (Emmy.PolyExpr.eval x b)))]
-    [Emmy.PolyExpr.eval_neg [x :- Int a :- Emmy.PolyExpr]
-     (= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.neg a))
-        (Int.neg (Emmy.PolyExpr.eval x a)))]])
+  '[[Emmy.PolyExpr.eval_const [x :- Int rho :- (=> Nat Int) c :- Int]
+     (= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.const c)) c)]
+    [Emmy.PolyExpr.eval_X [x :- Int rho :- (=> Nat Int)]
+     (= Int (Emmy.PolyExpr.eval x rho Emmy.PolyExpr.X) x)]
+    [Emmy.PolyExpr.eval_add [x :- Int rho :- (=> Nat Int) a :- Emmy.PolyExpr b :- Emmy.PolyExpr]
+     (= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.add a b))
+        (Int.add (Emmy.PolyExpr.eval x rho a) (Emmy.PolyExpr.eval x rho b)))]
+    [Emmy.PolyExpr.eval_mul [x :- Int rho :- (=> Nat Int) a :- Emmy.PolyExpr b :- Emmy.PolyExpr]
+     (= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.mul a b))
+        (Int.mul (Emmy.PolyExpr.eval x rho a) (Emmy.PolyExpr.eval x rho b)))]
+    [Emmy.PolyExpr.eval_neg [x :- Int rho :- (=> Nat Int) a :- Emmy.PolyExpr]
+     (= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.neg a))
+        (Int.neg (Emmy.PolyExpr.eval x rho a)))]
+    [Emmy.PolyExpr.eval_param [x :- Int rho :- (=> Nat Int) j :- Nat]
+     (= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.param j)) (rho j))]])
 
 (defn prove-equations!
   "Proves each `[name params statement]` by `rfl` (they hold by definitional
@@ -219,49 +229,68 @@
                                      (X)
                                      (add [a Emmy.PolyExpr] [b Emmy.PolyExpr])
                                      (mul [a Emmy.PolyExpr] [b Emmy.PolyExpr])
-                                     (neg [a Emmy.PolyExpr])))))
-    (define! (symbol eval-name) '[x :- Int e :- Emmy.PolyExpr] 'Int eval-body)
+                                     (neg [a Emmy.PolyExpr])
+                                     (param [j Nat])))))
+    (define! (symbol eval-name) '[x :- Int rho :- (=> Nat Int) e :- Emmy.PolyExpr] 'Int eval-body)
     (prove-equations! eval-equations))
   :installed)
 
 ;; ## IR ⇄ AST values
 
-(defn ir->value
-  "Converts IR over the single variable `var` into a runtime `PolyExpr`."
+(defn params-of
+  "The parameters of `ir` with respect to `var`: its other variables, sorted."
   [ir var]
-  (let [[op a b] ir]
-    (case op
-      :lit (if (integer? a)
-             [(ctor-index :const) a]
-             (unsupported! (str "PolyExpr coefficients are integers, got " a) {:value a}))
-      :var (if (= a var)
-             [(ctor-index :X)]
-             (unsupported! (str "Unexpected variable " a " (expected " var ")")
-                           {:var a :expected var}))
-      :add [(ctor-index :add) (ir->value a var) (ir->value b var)]
-      :sub [(ctor-index :add) (ir->value a var) [(ctor-index :neg) (ir->value b var)]]
-      :mul [(ctor-index :mul) (ir->value a var) (ir->value b var)]
-      :neg [(ctor-index :neg) (ir->value a var)])))
+  (vec (sort (disj (variables ir) var))))
+
+(defn ir->value
+  "Converts IR into a runtime `PolyExpr`, with `var` as `X` and the symbols in
+  `params` as `param 0`, `param 1`, …"
+  ([ir var] (ir->value ir var (params-of ir var)))
+  ([ir var params]
+   (let [index (zipmap params (range))]
+     (letfn [(go [[op a b]]
+               (case op
+                 :lit (if (integer? a)
+                        [(ctor-index :const) a]
+                        (unsupported! (str "PolyExpr coefficients are integers, got " a)
+                                      {:value a}))
+                 :var (cond (= a var) [(ctor-index :X)]
+                            (contains? index a) [(ctor-index :param) (index a)]
+                            :else (unsupported! (str "Unexpected variable " a)
+                                                {:var a :var-name var :params params}))
+                 :add [(ctor-index :add) (go a) (go b)]
+                 :sub [(ctor-index :add) (go a) [(ctor-index :neg) (go b)]]
+                 :mul [(ctor-index :mul) (go a) (go b)]
+                 :neg [(ctor-index :neg) (go a)]))]
+       (go ir)))))
 
 (defn value->ir
-  "Converts a runtime `PolyExpr` into IR, with `var` for the variable."
-  [value var]
-  (let [[tag a b] value]
-    (case (long tag)
-      0 [:lit a]
-      1 [:var var]
-      2 [:add (value->ir a var) (value->ir b var)]
-      3 [:mul (value->ir a var) (value->ir b var)]
-      4 [:neg (value->ir a var)])))
+  "Converts a runtime `PolyExpr` into IR, with `var` for `X` and `params` for
+  the parameters."
+  ([value var] (value->ir value var []))
+  ([value var params]
+   (let [[tag a b] value]
+     (case (long tag)
+       0 [:lit a]
+       1 [:var var]
+       2 [:add (value->ir a var params) (value->ir b var params)]
+       3 [:mul (value->ir a var params) (value->ir b var params)]
+       4 [:neg (value->ir a var params)]
+       5 [:var (nth params a)]))))
 
 (defn ->poly-expr
-  "Reads an Emmy expression (or bare s-expression) in the single variable
-  `var` into a runtime `PolyExpr`."
-  [expr var]
-  (ir->value (->ir expr) var))
+  "Reads an Emmy expression (or bare s-expression) into a runtime `PolyExpr`
+  with `var` as `X`. Other symbols become parameters, numbered by their
+  position in `params` (default: [[params-of]] the expression)."
+  ([expr var]
+   (let [ir (->ir expr)]
+     (ir->value ir var (params-of ir var))))
+  ([expr var params]
+   (ir->value (->ir expr) var params)))
 
 (defn eval-poly
-  "Evaluates the runtime `PolyExpr` `value` at the integer `x` using the
-  compiled `Emmy.PolyExpr.eval`."
-  [value x]
-  ((compiled-fn eval-name) x value))
+  "Evaluates the runtime `PolyExpr` `value` at the integer `x`, with parameter
+  `j` valued `(nth env j)`, using the compiled `Emmy.PolyExpr.eval`."
+  ([value x] (eval-poly value x []))
+  ([value x env]
+   ((compiled-fn eval-name) x (fn [j] (nth env j)) value)))

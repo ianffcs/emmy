@@ -10,14 +10,14 @@
   Emmy.PolyExpr.mkNeg        : PolyExpr → PolyExpr
   Emmy.PolyExpr.simp         : PolyExpr → PolyExpr             -- bottom-up rebuild
 
-  theorem Emmy.PolyExpr.simp_correct (e : PolyExpr) (x : Int) :
-    eval x (simp e) = eval x e
+  theorem Emmy.PolyExpr.simp_correct (e : PolyExpr) (x : Int) (ρ : Nat → Int) :
+    eval x ρ (simp e) = eval x ρ e
   ```
 
   The smart constructors drop additive zeros and multiplicative ones,
   annihilate with zero, fold constant arithmetic and cancel double negation.
-  Each has its own correctness lemma (e.g. `mkAdd_correct : eval x (mkAdd p q)
-  = eval x p + eval x q`), proved by `int_ring_split`, which case-splits on
+  Each has its own correctness lemma (e.g. `mkAdd_correct : eval x ρ (mkAdd p q)
+  = eval x ρ p + eval x ρ q`), proved by `int_ring_split`, which case-splits on
   the constructors and integer literals the definition inspects. `simp_correct`
   then follows by induction.
 
@@ -77,17 +77,17 @@
 
 (def ^:private smart-constructor-lemmas
   ;; [name params statement definition-to-unfold]
-  [['Emmy.PolyExpr.mkAdd_correct '[p :- Emmy.PolyExpr q :- Emmy.PolyExpr x :- Int]
-    '(= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.mkAdd p q))
-        (Int.add (Emmy.PolyExpr.eval x p) (Emmy.PolyExpr.eval x q)))
+  [['Emmy.PolyExpr.mkAdd_correct '[p :- Emmy.PolyExpr q :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
+    '(= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.mkAdd p q))
+        (Int.add (Emmy.PolyExpr.eval x rho p) (Emmy.PolyExpr.eval x rho q)))
     '[Emmy.PolyExpr.mkAdd]]
-   ['Emmy.PolyExpr.mkMul_correct '[p :- Emmy.PolyExpr q :- Emmy.PolyExpr x :- Int]
-    '(= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.mkMul p q))
-        (Int.mul (Emmy.PolyExpr.eval x p) (Emmy.PolyExpr.eval x q)))
+   ['Emmy.PolyExpr.mkMul_correct '[p :- Emmy.PolyExpr q :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
+    '(= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.mkMul p q))
+        (Int.mul (Emmy.PolyExpr.eval x rho p) (Emmy.PolyExpr.eval x rho q)))
     '[Emmy.PolyExpr.mkMul]]
-   ['Emmy.PolyExpr.mkNeg_correct '[p :- Emmy.PolyExpr x :- Int]
-    '(= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.mkNeg p))
-        (Int.neg (Emmy.PolyExpr.eval x p)))
+   ['Emmy.PolyExpr.mkNeg_correct '[p :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
+    '(= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.mkNeg p))
+        (Int.neg (Emmy.PolyExpr.eval x rho p)))
     '[Emmy.PolyExpr.mkNeg]]])
 
 ;; ## simp
@@ -100,7 +100,8 @@
       (Emmy.PolyExpr.mkAdd (Emmy.PolyExpr.simp a) (Emmy.PolyExpr.simp b))]
      [(Emmy.PolyExpr.mul a b)
       (Emmy.PolyExpr.mkMul (Emmy.PolyExpr.simp a) (Emmy.PolyExpr.simp b))]
-     [(Emmy.PolyExpr.neg a) (Emmy.PolyExpr.mkNeg (Emmy.PolyExpr.simp a))]))
+     [(Emmy.PolyExpr.neg a) (Emmy.PolyExpr.mkNeg (Emmy.PolyExpr.simp a))]
+     [(Emmy.PolyExpr.param j) (Emmy.PolyExpr.param j)]))
 
 (def ^:private simp-equations
   '[[Emmy.PolyExpr.simp_const [c :- Int]
@@ -115,10 +116,12 @@
         (Emmy.PolyExpr.mkMul (Emmy.PolyExpr.simp a) (Emmy.PolyExpr.simp b)))]
     [Emmy.PolyExpr.simp_neg [a :- Emmy.PolyExpr]
      (= Emmy.PolyExpr (Emmy.PolyExpr.simp (Emmy.PolyExpr.neg a))
-        (Emmy.PolyExpr.mkNeg (Emmy.PolyExpr.simp a)))]])
+        (Emmy.PolyExpr.mkNeg (Emmy.PolyExpr.simp a)))]
+    [Emmy.PolyExpr.simp_param [j :- Nat]
+     (= Emmy.PolyExpr (Emmy.PolyExpr.simp (Emmy.PolyExpr.param j)) (Emmy.PolyExpr.param j))]])
 
 (def ^:private theorem-proof
-  ;; Cases in constructor order: const, X, add, mul, neg.
+  ;; Cases in constructor order: const, X, add, mul, neg, param.
   (let [rules (vec (concat (map first simp-equations)
                            (map first smart-constructor-lemmas)
                            eval-rules))
@@ -128,7 +131,8 @@
      (case)
      (case 'ih_a 'ih_b)
      (case 'ih_a 'ih_b)
-     (case 'ih_a)]))
+     (case 'ih_a)
+     (case)]))
 
 (defn install!
   "Installs the simplifier and proves `simp_correct` (≈2s, once per JVM).
@@ -148,9 +152,9 @@
     (ax/prove-equations! simp-equations)
     (when-not (k/installed? theorem-name)
       (k/quietly
-       (a/prove-theorem (symbol theorem-name) '[e :- Emmy.PolyExpr x :- Int]
-                        '(= Int (Emmy.PolyExpr.eval x (Emmy.PolyExpr.simp e))
-                            (Emmy.PolyExpr.eval x e))
+       (a/prove-theorem (symbol theorem-name) '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
+                        '(= Int (Emmy.PolyExpr.eval x rho (Emmy.PolyExpr.simp e))
+                            (Emmy.PolyExpr.eval x rho e))
                         theorem-proof))))
   :installed)
 
@@ -162,10 +166,13 @@
   ((ax/compiled-fn simp-name) value))
 
 (defn simplify
-  "Simplifies the Emmy polynomial expression `expr` in `var` (default `'x`)
-  through Ansatz's verified `simp`, returning an Emmy expression."
+  "Simplifies the Emmy polynomial expression `expr` through Ansatz's verified
+  `simp`, returning an Emmy expression. Its symbols other than `var` (default
+  `'x`) are parameters."
   ([expr] (simplify expr 'x))
   ([expr var]
-   (-> (ax/->poly-expr expr var)
-       (simp-poly)
-       (codegen/->emmy var))))
+   (let [ir (ax/->ir expr)
+         params (ax/params-of ir var)]
+     (-> (ax/ir->value ir var params)
+         (simp-poly)
+         (codegen/->emmy var params)))))

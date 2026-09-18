@@ -11,22 +11,25 @@
   (:require [emmy.expression :as x]))
 
 (defn ->form
-  "The bare Emmy s-expression for the runtime `PolyExpr` `value`, with the
-  variable rendered as `var`."
-  [value var]
-  (let [[tag a b] value]
-    (case (long tag)
-      0 a
-      1 var
-      2 (list '+ (->form a var) (->form b var))
-      3 (list '* (->form a var) (->form b var))
-      4 (list '- (->form a var)))))
+  "The bare Emmy s-expression for the runtime `PolyExpr` `value`, with `X`
+  rendered as `var` and `param j` as `(nth params j)`."
+  ([value var] (->form value var []))
+  ([value var params]
+   (let [[tag a b] value]
+     (case (long tag)
+       0 a
+       1 var
+       2 (list '+ (->form a var params) (->form b var params))
+       3 (list '* (->form a var params) (->form b var params))
+       4 (list '- (->form a var params))
+       5 (nth params a)))))
 
 (defn ->emmy
-  "The Emmy symbolic expression for the runtime `PolyExpr` `value`, with the
-  variable rendered as `var`."
-  [value var]
-  (let [form (->form value var)]
-    (if (or (number? form) (symbol? form))
-      form
-      (x/make-literal ::x/numeric form))))
+  "The Emmy symbolic expression for the runtime `PolyExpr` `value`, with `X`
+  rendered as `var` and `param j` as `(nth params j)`."
+  ([value var] (->emmy value var []))
+  ([value var params]
+   (let [form (->form value var params)]
+     (if (or (number? form) (symbol? form))
+       form
+       (x/make-literal ::x/numeric form)))))

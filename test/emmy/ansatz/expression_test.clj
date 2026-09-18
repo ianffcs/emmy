@@ -36,6 +36,11 @@
   (testing "runtime representation"
     (is (= [3 [1] [2 [0 5] [1]]] (ax/->poly-expr '(* x (+ 5 x)) 'x))))
 
+  (testing "other symbols become numbered parameters"
+    (is (= [3 [1] [2 [0 5] [5 0]]] (ax/->poly-expr '(* x (+ 5 y)) 'x)))
+    (is (= [3 [5 0] [2 [0 5] [1]]] (ax/->poly-expr '(* x (+ 5 y)) 'y)))
+    (is (= 11 (ax/eval-poly (ax/->poly-expr '(+ x (* y z)) 'x) 1 [2 5]))))
+
   (testing "rational coefficients are not (yet) representable"
     (is (thrown? clojure.lang.ExceptionInfo (ax/->poly-expr '(/ x 2) 'x))))
 
@@ -52,3 +57,14 @@
              x (gen/choose -50 50)]
             (is (= (ax/evaluate (ax/->ir form) {'x x})
                    (ax/eval-poly (ax/->poly-expr form 'x) x)))))
+
+(deftest multivariate-eval-test
+  (ax/install!)
+  (checking "the compiled eval agrees with the IR with parameters" 100
+            [form (ag/poly-form-over '[x y z])
+             vals (gen/vector (gen/choose -20 20) 3)]
+            (let [ir (ax/->ir form)
+                  params (ax/params-of ir 'x)
+                  env (zipmap '[x y z] vals)]
+              (is (= (ax/evaluate ir env)
+                     (ax/eval-poly (ax/ir->value ir 'x params) (env 'x) (mapv env params)))))))
