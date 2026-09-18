@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+- fixes the derivative of `(expt x 0)` in `emmy.generic`: `D` of
+  `(fn [x] (expt (- x x) 0))` threw "Divide by zero" (in both forward and
+  reverse mode) because the rule computed `0 * x^-1`; it now returns 0
+
 ## [0.32.0]
 
 - #170:

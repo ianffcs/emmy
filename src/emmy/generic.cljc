@@ -321,7 +321,11 @@
 
 (defgeneric expt 2
   {:dfdx (fn [x y]
-           (mul y (expt x (sub y 1))))
+           ;; x^0 is constant in x. Returning 0 directly avoids computing
+           ;; x^-1, which is undefined at x = 0.
+           (if (and (v/number? y) (zero? y))
+             0
+             (mul y (expt x (sub y 1)))))
    :dfdy (fn [x y]
            (if (and (v/number? x) (zero? x))
              (if (v/number? y)

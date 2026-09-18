@@ -61,6 +61,13 @@
     (is (= (* 3 (g/expt 'y 2))
            ((D #(g/expt % 3)) 'y))))
 
+  (testing "expt with exponent 0 is constant, even when the base is 0"
+    (doseq [mode [sd/FORWARD-MODE sd/REVERSE-MODE]]
+      (binding [d/*mode* mode]
+        (is (= 0 ((D (fn [x] (g/expt (- x x) 0))) 'x)))
+        (is (= 0 ((D (fn [x] (g/expt (- x x) 0))) 3)))
+        (is (= 0 ((D (fn [x] (g/expt x 0))) 0))))))
+
   (is (= (/ 1 (g/expt (cos 'x) 2))
          ((D tan) 'x)))
 
