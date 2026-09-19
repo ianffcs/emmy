@@ -554,6 +554,87 @@
       (theorem! "zero_ne_one" (t/not' (eq-q zero one))
         (t/app (c "ne_of_lt") zero one (c "zero_lt_one"))))))
 
+(defn- q-eq-map
+  "Proof map for `h : x = y` in `Q`."
+  [x y h]
+  {:lhs x :rhs y :type Q :level l1 :term h})
+
+(defn- congr-q
+  "From `h : x = y` in `Q`, a proof map of `f x = f y` for `f : Q → Q`."
+  [f x y h]
+  (q-eq-map (t/app f x) (t/app f y)
+            (t/app (k/const "congrArg" l1 l1) Q Q x y f h)))
+
+(defn- rewrite-q
+  "Proof of `motive y` from `h : motive x` and `e : x = y` in `Q`."
+  [motive x y e h]
+  (t/transport-at Q l1 (t/lambda [[z Q]] (motive z)) x y e h))
+
+(defn- install-metric! []
+  (quot-law! "sub_self" 1 #(sub % %) (constantly zero) #(radd % (rneg %)) (constantly rzero))
+  (quot-law! "neg_sub" 2 #(neg (sub %1 %2)) #(sub %2 %1)
+             #(rneg (radd %1 (rneg %2))) #(radd %2 (rneg %1)))
+  (quot-law! "sub_add_sub" 3 #(add (sub %1 %2) (sub %2 %3)) #(sub %1 %3)
+             #(radd (radd %1 (rneg %2)) (radd %2 (rneg %3))) #(radd %1 (rneg %3)))
+  (quot-law! "add_sub_cancel" 2 #(add %2 (sub %1 %2)) (fn [p _] p)
+             #(radd %2 (radd %1 (rneg %2))) (fn [a _] a))
+  (theorem! "abs_zero" (eq-q (abs zero) zero)
+    (sound (t/app (c "repAbs") (c "repZero")) (c "repZero")
+           (o/with-abs-cases [k/zero] (k/eq (k/mul (o/abs k/zero) k/one) (k/mul k/zero k/one))
+             #(o/by-omega (k/eq (k/mul (o/abs k/zero) k/one) (k/mul k/zero k/one)) %))))
+  (q-theorem! "abs_neg" 1 (fn [[p]] (eq-q (abs (neg p)) (abs p)))
+    (fn [[a]]
+      (sound (t/app (c "repAbs") (t/app (r "neg") a)) (t/app (c "repAbs") a)
+             (:term (k/congr-mul {:lhs (o/abs (k/neg (rnum a))) :rhs (o/abs (rnum a))
+                                  :term (t/app (k/const "Emmy.Analysis.Int.abs_neg") (rnum a))}
+                                 (k/refl (rden a)))))))
+  (theorem! "abs_sub_comm"
+    (t/forall [[p Q] [q Q]] (eq-q (abs (sub p q)) (abs (sub q p))))
+    (t/lambda [[p Q] [q Q]]
+      (:term (k/trans (q-eq-map (abs (sub p q)) (abs (neg (sub p q)))
+                                (t/app (k/const "Eq.symm" l1) Q (abs (neg (sub p q))) (abs (sub p q))
+                                       (t/app (c "abs_neg") (sub p q))))
+                      (congr-q (c "abs") (neg (sub p q)) (sub q p) (t/app (c "neg_sub") p q))))))
+  (theorem! "dist_triangle"
+    (t/forall [[a Q] [b Q] [s Q]]
+      (le (abs (sub a s)) (add (abs (sub a b)) (abs (sub b s)))))
+    (t/lambda [[a Q] [b Q] [s Q]]
+      (let [rhs (add (abs (sub a b)) (abs (sub b s)))]
+        (rewrite-q #(le (abs %) rhs) (add (sub a b) (sub b s)) (sub a s)
+                   (t/app (c "sub_add_sub") a b s)
+                   (t/app (c "abs_triangle") (sub a b) (sub b s))))))
+  (theorem! "add_lt_add"
+    (t/forall [[x Q] [a Q] [y Q] [b Q]]
+      (implies (lt x a) (lt y b) (lt (add x y) (add a b))))
+    (t/lambda [[x Q] [a Q] [y Q] [b Q] [hx (lt x a)] [hy (lt y b)]]
+      (let [h1 (t/app (c "add_lt_add_left") y b x hy)            ; x+y < x+b
+            h2 (t/app (c "add_lt_add_left") x a b hx)            ; b+x < b+a
+            h2' (rewrite-q #(lt % (add b a)) (add b x) (add x b) (t/app (c "add_comm") b x) h2)
+            h2'' (rewrite-q #(lt (add x b) %) (add b a) (add a b) (t/app (c "add_comm") b a) h2')]
+        (t/app (c "lt_trans") (add x y) (add x b) (add a b) h1 h2''))))
+  (quot-law! "sub_add_add" 4 #(sub (add %1 %2) (add %3 %4)) #(add (sub %1 %3) (sub %2 %4))
+             #(radd (radd %1 %2) (rneg (radd %3 %4))) #(radd (radd %1 (rneg %3)) (radd %2 (rneg %4))))
+  (quot-law! "neg_sub_neg" 2 #(sub (neg %1) (neg %2)) #(neg (sub %1 %2))
+             #(radd (rneg %1) (rneg (rneg %2))) #(rneg (radd %1 (rneg %2))))
+  (theorem! "dist_add_le"
+    (t/forall [[a Q] [b Q] [s Q] [u Q]]
+      (le (abs (sub (add a b) (add s u))) (add (abs (sub a s)) (abs (sub b u)))))
+    (t/lambda [[a Q] [b Q] [s Q] [u Q]]
+      (let [rhs (add (abs (sub a s)) (abs (sub b u)))]
+        (rewrite-q #(le (abs %) rhs) (add (sub a s) (sub b u)) (sub (add a b) (add s u))
+                   (t/app (k/const "Eq.symm" l1) Q (sub (add a b) (add s u)) (add (sub a s) (sub b u))
+                          (t/app (c "sub_add_add") a b s u))
+                   (t/app (c "abs_triangle") (sub a s) (sub b u))))))
+  (theorem! "dist_neg"
+    (t/forall [[a Q] [b Q]] (eq-q (abs (sub (neg a) (neg b))) (abs (sub a b))))
+    (t/lambda [[a Q] [b Q]]
+      (:term (k/trans (congr-q (c "abs") (sub (neg a) (neg b)) (neg (sub a b)) (t/app (c "neg_sub_neg") a b))
+                      (q-eq-map (abs (neg (sub a b))) (abs (sub a b)) (t/app (c "abs_neg") (sub a b)))))))
+  (theorem! "half_pos_of_pos"
+    (t/forall [[e Q]] (implies (lt zero e) (lt zero (mul half e))))
+    (t/lambda [[e Q] [h (lt zero e)]]
+      (t/app (c "mul_pos") half e (c "half_pos") h))))
+
 (defn install!
   "Installs ℚ as an ordered commutative ring with absolute value, the
   Archimedean property and halving. Idempotent."
@@ -586,5 +667,6 @@
     (install-order-laws!)
     (install-abs!)
     (install-archimedean-and-half!)
-    (install-field!))
+    (install-field!)
+    (install-metric!))
   :installed)

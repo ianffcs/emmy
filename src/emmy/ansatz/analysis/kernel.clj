@@ -200,3 +200,72 @@
                     (doseq [c (consts v #{})] (visit c))))))]
       (visit (str label))
       @axioms)))
+
+;; ## Generic quotient lifting
+;;
+;; `qc` describes a quotient of a type `:alpha : Type` by `:rel`, with
+;; `:refl` (a ↦ proof of rel a a) and `:symm` ((a b h) ↦ proof of rel b a).
+;; Operations and congruences are Clojure functions producing kernel terms.
+
+(defn- quot-of [qc] (quot-type (:alpha qc) (:rel qc)))
+(defn- mk-of [qc a] (quot-mk (:alpha qc) (:rel qc) a))
+(defn- sound-of [qc a b h] (quot-sound (:alpha qc) (:rel qc) a b h))
+(defn- rel-of [qc a b] (app (:rel qc) a b))
+
+(defn lift1*
+  "`Quot r → Quot r` lifting `op` (a ↦ term) with `congr` ((a b h) ↦ proof of
+  `r (op a) (op b)`)."
+  [qc op congr]
+  (let [Qt (quot-of qc) A (:alpha qc)]
+    (lam "x" Qt
+         (fn [x]
+           (app (quot-lift A (:rel qc) Qt
+                           (lam "a" A #(mk-of qc (op %)))
+                           (lam "a" A (fn [a] (lam "b" A (fn [b] (lam "h" (rel-of qc a b)
+                                                                      #(sound-of qc (op a) (op b) (congr a b %))))))))
+                x)))))
+
+(defn quot-ind-all*
+  "Proof of `P x₁ … xₙ` for the bound quotient variables `xs`, from `leaf`
+  (representatives ↦ proof of `P (mk a₁) … (mk aₙ)`)."
+  [qc xs motive leaf]
+  (let [Qt (quot-of qc) A (:alpha qc)]
+    (letfn [(go [done remaining]
+              (if (empty? remaining)
+                (leaf done)
+                (app (quot-ind A (:rel qc)
+                               (lam "x" Qt #(apply motive (concat (map (partial mk-of qc) done) [%] (rest remaining))))
+                               (lam "a" A #(go (conj done %) (rest remaining))))
+                     (first remaining))))]
+      (go [] (vec xs)))))
+
+(defn lift2*
+  "`Quot r → Quot r → Quot r` lifting the binary `op` with `congr`
+  ((a a' b b' ha hb) ↦ proof of `r (op a b) (op a' b')`)."
+  [qc op congr]
+  (let [Qt (quot-of qc) A (:alpha qc) refl (:refl qc)
+        inner (fn [a y]
+                (app (quot-lift A (:rel qc) Qt
+                                (lam "b" A #(mk-of qc (op a %)))
+                                (lam "b" A (fn [b] (lam "b'" A (fn [b'] (lam "h" (rel-of qc b b')
+                                                                              #(sound-of qc (op a b) (op a b')
+                                                                                         (congr a a b b' (refl a) %))))))))
+                     y))]
+    (lam "x" Qt
+         (fn [x]
+           (lam "y" Qt
+                (fn [y]
+                  (app (quot-lift A (:rel qc) Qt
+                                  (lam "a" A #(inner % y))
+                                  (lam "a" A
+                                       (fn [a]
+                                         (lam "a'" A
+                                              (fn [a']
+                                                (lam "h" (rel-of qc a a')
+                                                     (fn [h]
+                                                       (app (quot-ind A (:rel qc)
+                                                                      (lam "z" Qt #(k/eq-at Qt u1 (inner a %) (inner a' %)))
+                                                                      (lam "b" A #(sound-of qc (op a %) (op a' %)
+                                                                                            (congr a a' % % h (refl %)))))
+                                                            y))))))))
+                       x)))))))
