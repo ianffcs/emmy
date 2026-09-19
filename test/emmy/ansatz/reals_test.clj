@@ -11,7 +11,10 @@
 
 (def ^:private theorems
   ["equiv_refl" "equiv_symm" "equiv_trans" "const_cauchy" "add_cauchy" "neg_cauchy"
-   "add_congr" "neg_congr" "bounded_below" "bounded" "mul_cauchy" "mul_congr"])
+   "add_congr" "neg_congr" "bounded_below" "bounded" "mul_cauchy" "mul_congr"
+   ;; ring laws
+   "equiv_of_eq" "add_comm" "add_assoc" "zero_add" "add_left_neg" "sub_self" "mul_comm"
+   "mul_assoc" "one_mul" "left_distrib" "ofQ_add" "ofQ_mul" "ofQ_neg"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"

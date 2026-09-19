@@ -460,6 +460,78 @@
         (define! "mul" (t/arrow R (t/arrow R R))
           (t/lift2* qconf cmul (fn [a a' b b' ha hb] (t/app (c "mul_congr") a a' b b' ha hb))))))))
 
+;; ## Ring laws
+;;
+;; Each law on `R` is a pointwise law in `Q`: pointwise equal sequences are
+;; equivalent (`equiv_of_eq`), so `Quot.sound` gives the equality in `R`.
+
+(defn- cconst "The constant Cauchy sequence at `x : Q`." [x]
+  (make-cseq (t/app (c "constSeq") x) (t/app (c "const_cauchy") x)))
+(defn- cadd [s u] (t/app (c "cadd") s u))
+(defn- cneg [s] (t/app (c "cneg") s))
+(defn- cmul [s u] (t/app (c "cmul") s u))
+(defn- eq-r [x y] (k/eq-at R l1 x y))
+
+(defn- r-law!
+  "Installs `∀ x₁ … xₙ : R, lhs = rhs`. `r-lhs`/`r-rhs` build the sides from
+  `R` terms and `c-lhs`/`c-rhs` from `CSeq` terms; `pointwise` maps the `CSeq`
+  fvars and an index `n` to a proof of the `Q` equation at `n`."
+  [label n r-lhs r-rhs c-lhs c-rhs pointwise]
+  (let [names (take n ["x" "y" "z" "w"])
+        statement (fn [xs] (eq-r (apply r-lhs xs) (apply r-rhs xs)))]
+    (theorem! label
+      (q/pis names R statement)
+      (q/lams names R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs (fn [& ys] (statement ys))
+                                 (fn [ss]
+                                   (let [a (apply c-lhs ss) b (apply c-rhs ss)]
+                                     (t/quot-sound CSeq (c "Equiv") a b
+                                                   (t/app (c "equiv_of_eq") a b
+                                                          (t/lam "n" Nat #(apply pointwise (conj ss %)))))))))))))
+
+(defn- install-ring-laws! []
+  (theorem! "equiv_of_eq"
+    (t/forall [[s CSeq] [u CSeq]]
+      (implies (t/forall [[n Nat]] (k/eq-at Q l1 (at s n) (at u n))) (equiv s u)))
+    (t/lambda [[s CSeq] [u CSeq] [h (t/forall [[n Nat]] (k/eq-at Q l1 (at s n) (at u n)))] [eps Q] [he (pos eps)]]
+      (eventually-intro #(q/lt (dist (at s %) (at u %)) eps) (e/lit-nat 0)
+                        (t/lambda [[n Nat] [_hn (nat-le (e/lit-nat 0) n)]]
+                          (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt (dist (at s n) z) eps)) (at s n) (at u n)
+                                          (t/app h n) (dist-self-lt (at s n) eps he))))))
+  (let [qlaw (fn [nm] (fn [& args] (let [n (last args) ss (butlast args)]
+                                     (apply t/app (qc nm) (map #(at % n) ss)))))
+        cz (cconst q/zero) c1 (cconst q/one)]
+    (r-law! "add_comm" 2 add #(add %2 %1) cadd #(cadd %2 %1) (qlaw "add_comm"))
+    (r-law! "add_assoc" 3 #(add (add %1 %2) %3) #(add %1 (add %2 %3))
+            #(cadd (cadd %1 %2) %3) #(cadd %1 (cadd %2 %3)) (qlaw "add_assoc"))
+    (r-law! "zero_add" 1 #(add zero %) identity #(cadd cz %) identity (qlaw "zero_add"))
+    (r-law! "add_left_neg" 1 #(add (neg %) %) (constantly zero) #(cadd (cneg %) %) (constantly cz)
+            (qlaw "add_left_neg"))
+    (r-law! "sub_self" 1 #(sub % %) (constantly zero) #(cadd % (cneg %)) (constantly cz) (qlaw "sub_self"))
+    (r-law! "mul_comm" 2 mul #(mul %2 %1) cmul #(cmul %2 %1) (qlaw "mul_comm"))
+    (r-law! "mul_assoc" 3 #(mul (mul %1 %2) %3) #(mul %1 (mul %2 %3))
+            #(cmul (cmul %1 %2) %3) #(cmul %1 (cmul %2 %3)) (qlaw "mul_assoc"))
+    (r-law! "one_mul" 1 #(mul one %) identity #(cmul c1 %) identity (qlaw "one_mul"))
+    (r-law! "left_distrib" 3 #(mul %1 (add %2 %3)) #(add (mul %1 %2) (mul %1 %3))
+            #(cmul %1 (cadd %2 %3)) #(cadd (cmul %1 %2) (cmul %1 %3)) (qlaw "left_distrib"))
+    ;; ofQ is a ring homomorphism: both sides are pointwise identical
+    (doseq [[label r-op q-op c-op] [["ofQ_add" add q/add cadd] ["ofQ_mul" mul q/mul cmul]]]
+      (theorem! label
+        (t/forall [[p Q] [u Q]] (eq-r (r-op (of-q p) (of-q u)) (of-q (q-op p u))))
+        (t/lambda [[p Q] [u Q]]
+          (let [a (c-op (cconst p) (cconst u)) b (cconst (q-op p u))]
+            (t/quot-sound CSeq (c "Equiv") a b
+                          (t/app (c "equiv_of_eq") a b
+                                 (t/lam "n" Nat (fn [_] (t/app (k/const "Eq.refl" l1) Q (q-op p u))))))))))
+    (theorem! "ofQ_neg"
+      (t/forall [[p Q]] (eq-r (neg (of-q p)) (of-q (q/neg p))))
+      (t/lambda [[p Q]]
+        (let [a (cneg (cconst p)) b (cconst (q/neg p))]
+          (t/quot-sound CSeq (c "Equiv") a b
+                        (t/app (c "equiv_of_eq") a b
+                               (t/lam "n" Nat (fn [_] (t/app (k/const "Eq.refl" l1) Q (q/neg p)))))))))))
+
 ;; ## Installation
 
 (defn install!
@@ -544,5 +616,6 @@
                    (t/app (k/const "Subtype.mk" l1) Seq (c "Cauchy")
                           (t/app (c "constSeq") x) (t/app (c "const_cauchy") x)))))
     (install-add-neg!)
-    (install-mul!))
+    (install-mul!)
+    (install-ring-laws!))
   :installed)

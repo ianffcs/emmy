@@ -109,6 +109,11 @@ order), and respells literal coefficients as repeated sums, since Ansatz's
   products, `|a·c − b·d| ≤ |a|·|c − d| + |d|·|a − b|` (`Q.dist_mul_le`) with
   tolerances `B⁻¹·(ε/2)` (`Q.inv_pos`, `Q.mul_inv_mul`).
 
+Ring laws on `R` (start of M3) are genuine equalities: `equiv_of_eq` turns a
+pointwise `Q` law into `Equiv`, and `Quot.sound` gives `add_comm`, `add_assoc`,
+`zero_add`, `add_left_neg`, `sub_self`, `mul_comm`, `mul_assoc`, `one_mul`,
+`left_distrib`; `ofQ` is a ring homomorphism (`ofQ_add`, `ofQ_mul`, `ofQ_neg`).
+
 Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 `dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative
 order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,
