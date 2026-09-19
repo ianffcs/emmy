@@ -261,6 +261,205 @@
       (define! "zero" R (of-q q/zero))
       (define! "one" R (of-q q/one)))))
 
+;; ## Boundedness and multiplication
+
+(defn nat-lt [m n] (t/app (k/const "LT.lt" l0) Nat (k/const "instLTNat") m n))
+
+(defn- bound-below
+  "`0 < B ∧ ∀ n, n < N → |f n| < B`."
+  [f N B]
+  (t/and' (pos B) (t/forall [[n Nat]] (t/arrow (nat-lt n N) (q/lt (q/abs (t/app f n)) B)))))
+
+(defn- bound-body
+  "`0 < B ∧ ∀ n, |f n| < B`."
+  [f B]
+  (t/and' (pos B) (t/forall [[n Nat]] (q/lt (q/abs (t/app f n)) B))))
+
+(defn- bounded [f] (t/exists' Q (t/lambda [[B Q]] (bound-body f B))))
+
+(defn- with-bound
+  "Proof of `goal` from `hf : Cauchy f` and `k`, called with the bound `B`, a
+  proof of `0 < B` and a function from `n` to a proof of `|f n| < B`."
+  [f hf goal k]
+  (let [all (fn [B] (t/forall [[n Nat]] (q/lt (q/abs (t/app f n)) B)))]
+    (t/exists-elim Q (t/lambda [[B Q]] (bound-body f B)) goal (t/app (c "bounded") f hf)
+                   (t/lambda [[B Q] [hB (bound-body f B)]]
+                     (k B (t/and-left (pos B) (all B) hB)
+                        (fn [n] (t/app (t/and-right (pos B) (all B) hB) n)))))))
+
+(defn- product-close
+  "Proof of `|a·c − b·d| < ε` from `hA : |a| < A`, `hD : |d| < D` (with `A`,
+  `D` positive), `hcd : |c − d| < A⁻¹·(ε/2)` and `hab : |a − b| < D⁻¹·(ε/2)`."
+  [a b cc d A D eps hA hApos hD hDpos hcd hab]
+  (let [e2 (q/mul q/half eps)
+        dA (q/mul (q/inv A) e2) dD (q/mul (q/inv D) e2)
+        x1 (q/mul (q/abs a) (dist cc d))
+        x2 (q/mul (q/abs d) (dist a b))
+        close (fn [x bound-prop hx hxb dist-nonneg hdist B dB hBpos]
+                (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt bound-prop z)) (q/mul B dB) e2
+                                (t/app (qc "mul_inv_mul") B e2 hBpos)
+                                (t/app (qc "mul_lt_of_lt_of_lt") (q/abs x) B hx dB
+                                       (t/app (qc "abs_nonneg") x) hxb dist-nonneg hdist)))
+        t1 (close a x1 (dist cc d) hA (t/app (qc "abs_nonneg") (q/sub cc d)) hcd A dA hApos)
+        t2 (close d x2 (dist a b) hD (t/app (qc "abs_nonneg") (q/sub a b)) hab D dD hDpos)]
+    (t/app (qc "lt_of_le_of_lt") (dist (q/mul a cc) (q/mul b d)) (q/add x1 x2) eps
+           (t/app (qc "dist_mul_le") a b cc d)
+           (half-split x1 x2 eps t1 t2))))
+
+(defn- tolerance-pos
+  "Proof of `0 < B⁻¹·(ε/2)` from `0 < B` and `0 < ε`."
+  [B eps hB he]
+  (t/app (qc "mul_pos") (q/inv B) (q/mul q/half eps)
+         (t/app (qc "inv_pos") B hB) (t/app (qc "half_pos_of_pos") eps he)))
+
+(defn mul [x y] (t/app (c "mul") x y))
+
+(defn- install-mul! []
+  (let [one-pos (qc "zero_lt_one")]
+    ;; ∀ N, ∃ B, 0 < B ∧ ∀ n < N, |f n| < B, by induction on N
+    (theorem! "bounded_below"
+      (t/forall [[f Seq] [N Nat]] (t/exists' Q (t/lambda [[B Q]] (bound-below f N B))))
+      (t/lambda [[f Seq]]
+        (let [pre (fn [N] (t/exists' Q (t/lambda [[B Q]] (bound-below f N B))))
+              intro (fn [N B hpos hall]
+                      (t/exists-intro Q (t/lambda [[B' Q]] (bound-below f N B')) B
+                                      (t/and-intro (pos B) (t/forall [[n Nat]] (t/arrow (nat-lt n N) (q/lt (q/abs (t/app f n)) B)))
+                                                   hpos hall)))
+              base (intro (k/const "Nat.zero") q/one one-pos
+                          (t/lambda [[n Nat] [h (nat-lt n (k/const "Nat.zero"))]]
+                            (t/false-elim (q/lt (q/abs (t/app f n)) q/one)
+                                          (t/app (k/const "Nat.not_lt_zero") n h))))
+              step (t/lambda [[K Nat] [ih (pre K)]]
+                     (let [K' (t/app (k/const "Nat.succ") K)
+                           all (fn [B] (t/forall [[n Nat]] (t/arrow (nat-lt n K) (q/lt (q/abs (t/app f n)) B))))]
+                       (t/exists-elim Q (t/lambda [[B Q]] (bound-below f K B)) (pre K') ih
+                                      (t/lambda [[B Q] [hB (bound-below f K B)]]
+                                        (let [fK (q/abs (t/app f K))
+                                              B' (q/add B fK)
+                                              hpos (t/and-left (pos B) (all B) hB)
+                                              hall (t/and-right (pos B) (all B) hB)
+                                              le-B (t/app (qc "le_add_of_nonneg_right") B fK (t/app (qc "abs_nonneg") (t/app f K)))]
+                                          (intro K' B'
+                                                 (t/app (qc "lt_of_lt_of_le") q/zero B B' hpos le-B)
+                                                 (t/lambda [[n Nat] [h (nat-lt n K')]]
+                                                   (let [goal (q/lt (q/abs (t/app f n)) B')
+                                                         hle (t/app (k/const "Nat.le_of_lt_succ") n K h)
+                                                         eq-nk (t/app (k/const "Eq" l1) Nat n K)]
+                                                     (t/or-elim eq-nk (nat-lt n K) goal
+                                                                (t/app (k/const "Nat.eq_or_lt_of_le") n K hle)
+                                                                (t/lam "e" eq-nk
+                                                                       (fn [e]
+                                                                         (t/transport-at Nat l1 (t/lambda [[z Nat]] (q/lt (q/abs (t/app f z)) B')) K n
+                                                                                         (t/app (k/const "Eq.symm" l1) Nat n K e)
+                                                                                         (t/app (qc "lt_add_of_pos_left") fK B hpos))))
+                                                                (t/lam "hl" (nat-lt n K)
+                                                                       (fn [hl]
+                                                                         (t/app (qc "lt_of_lt_of_le") (q/abs (t/app f n)) B B'
+                                                                                (t/app hall n hl) le-B))))))))))))]
+          (t/lambda [[N Nat]]
+            (t/app (k/const "Nat.rec" l0) (t/lambda [[M Nat]] (pre M)) base step N)))))
+    ;; Cauchy sequences are bounded: below the Cauchy threshold for ε = 1 use
+    ;; the finite bound, beyond it |f n| ≤ |f N| + |f n − f N| < |f N| + 1
+    (theorem! "bounded"
+      (t/forall [[f Seq]] (implies (cauchy f) (bounded f)))
+      (t/lambda [[f Seq] [hf (cauchy f)]]
+        (cauchy-elim f q/one (bounded f) (t/app hf q/one one-pos)
+                     (fn [N hN]
+                       (let [all0 (fn [B] (t/forall [[n Nat]] (t/arrow (nat-lt n N) (q/lt (q/abs (t/app f n)) B))))]
+                         (t/exists-elim Q (t/lambda [[B Q]] (bound-below f N B)) (bounded f)
+                                        (t/app (c "bounded_below") f N)
+                                        (t/lambda [[B0 Q] [hB0 (bound-below f N B0)]]
+                                          (let [fN (q/abs (t/app f N))
+                                                C (q/add fN q/one)
+                                                B (q/add B0 C)
+                                                hB0pos (t/and-left (pos B0) (all0 B0) hB0)
+                                                hall (t/and-right (pos B0) (all0 B0) hB0)
+                                                hCpos (t/app (qc "lt_of_le_of_lt") q/zero fN C (t/app (qc "abs_nonneg") (t/app f N))
+                                                             (t/app (qc "lt_add_of_pos_right") fN q/one one-pos))
+                                                hC (t/app (qc "le_of_lt") q/zero C hCpos)
+                                                le-B0 (t/app (qc "le_add_of_nonneg_right") B0 C hC)
+                                                le-C (t/app (qc "le_add_of_nonneg_left") C B0 (t/app (qc "le_of_lt") q/zero B0 hB0pos))]
+                                            (t/exists-intro Q (t/lambda [[B' Q]] (bound-body f B')) B
+                                                            (t/and-intro (pos B) (t/forall [[n Nat]] (q/lt (q/abs (t/app f n)) B))
+                                                                         (t/app (qc "lt_of_lt_of_le") q/zero B0 B hB0pos le-B0)
+                                                                         (t/lambda [[n Nat]]
+                                                                           (let [fn' (q/abs (t/app f n))
+                                                                                 goal (q/lt fn' B)
+                                                                                 ge (nat-le N n)]
+                                                                             (t/or-elim (nat-lt n N) ge goal
+                                                                                        (t/app (k/const "Nat.lt_or_ge") n N)
+                                                                                        (t/lam "h" (nat-lt n N)
+                                                                                               #(t/app (qc "lt_of_lt_of_le") fn' B0 B (t/app hall n %) le-B0))
+                                                                                        (t/lam "h" ge
+                                                                                               (fn [h]
+                                                                                                 (let [d (dist (t/app f n) (t/app f N))
+                                                                                                       s1 (t/app (qc "abs_le_add_dist") (t/app f n) (t/app f N))
+                                                                                                       s2 (t/app (qc "add_lt_add_left") d q/one fN
+                                                                                                                 (t/app hN n N h (t/app (k/const "Nat.le_refl") N)))
+                                                                                                       s3 (t/app (qc "lt_of_le_of_lt") fn' (q/add fN d) C s1 s2)]
+                                                                                                   (t/app (qc "lt_of_lt_of_le") fn' C B s3 le-C)))))))))))))))))
+    (define! "mulSeq" (t/arrow Seq (t/arrow Seq Seq))
+      (t/lambda [[f Seq] [g Seq]] (t/lam "n" Nat #(q/mul (t/app f %) (t/app g %)))))
+    (let [mul-seq #(t/app (c "mulSeq") %1 %2)]
+      (theorem! "mul_cauchy"
+        (t/forall [[f Seq] [g Seq]] (implies (cauchy f) (cauchy g) (cauchy (mul-seq f g))))
+        (t/lambda [[f Seq] [g Seq] [hf (cauchy f)] [hg (cauchy g)] [eps Q] [he (pos eps)]]
+          (let [h (mul-seq f g)
+                goal (t/exists' Nat (t/lambda [[N Nat]] (cauchy-body h eps N)))
+                e2 (q/mul q/half eps)]
+            (with-bound f hf goal
+              (fn [Bf hBf bf]
+                (with-bound g hg goal
+                  (fn [Bg hBg bg]
+                    (let [d1 (q/mul (q/inv Bf) e2) d2 (q/mul (q/inv Bg) e2)]
+                      (cauchy-elim g d1 goal (t/app hg d1 (tolerance-pos Bf eps hBf he))
+                                   (fn [N1 hN1]
+                                     (cauchy-elim f d2 goal (t/app hf d2 (tolerance-pos Bg eps hBg he))
+                                                  (fn [N2 hN2]
+                                                    (cauchy-intro h eps (nat-add N1 N2)
+                                                                  (t/lambda [[m Nat] [n Nat]
+                                                                             [hm (nat-le (nat-add N1 N2) m)]
+                                                                             [hn (nat-le (nat-add N1 N2) n)]]
+                                                                    (let [[hm1 hm2] (threshold-le N1 N2 m hm)
+                                                                          [hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                      (product-close (t/app f m) (t/app f n) (t/app g m) (t/app g n)
+                                                                                     Bf Bg eps (bf m) hBf (bg n) hBg
+                                                                                     (t/app hN1 m n hm1 hn1)
+                                                                                     (t/app hN2 m n hm2 hn2)))))))))))))))))
+      (define! "cmul" (t/arrow CSeq (t/arrow CSeq CSeq))
+        (t/lambda [[s CSeq] [u CSeq]]
+          (make-cseq (mul-seq (val' s) (val' u))
+                     (t/app (c "mul_cauchy") (val' s) (val' u) (cauchy-of s) (cauchy-of u)))))
+      (let [cmul #(t/app (c "cmul") %1 %2)]
+        ;; |s u − s' u'| ≤ |s|·|u − u'| + |u'|·|s − s'|, with bounds on s and u'
+        (theorem! "mul_congr"
+          (t/forall [[s CSeq] [s' CSeq] [u CSeq] [u' CSeq]]
+            (implies (equiv s s') (equiv u u') (equiv (cmul s u) (cmul s' u'))))
+          (t/lambda [[s CSeq] [s' CSeq] [u CSeq] [u' CSeq] [hs (equiv s s')] [hu (equiv u u')] [eps Q] [he (pos eps)]]
+            (let [P #(q/lt (dist (q/mul (at s %) (at u %)) (q/mul (at s' %) (at u' %))) eps)
+                  goal (eventually P)
+                  e2 (q/mul q/half eps)]
+              (with-bound (val' s) (cauchy-of s) goal
+                (fn [A hA ba]
+                  (with-bound (val' u') (cauchy-of u') goal
+                    (fn [D hD bd]
+                      (let [d1 (q/mul (q/inv A) e2) d2 (q/mul (q/inv D) e2)
+                            P1 #(q/lt (dist (at u %) (at u' %)) d1)
+                            P2 #(q/lt (dist (at s %) (at s' %)) d2)]
+                        (eventually-elim P1 goal (t/app hu d1 (tolerance-pos A eps hA he))
+                                         (fn [N1 hN1]
+                                           (eventually-elim P2 goal (t/app hs d2 (tolerance-pos D eps hD he))
+                                                            (fn [N2 hN2]
+                                                              (eventually-intro P (nat-add N1 N2)
+                                                                                (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                                                                  (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                                    (product-close (at s n) (at s' n) (at u n) (at u' n)
+                                                                                                   A D eps (ba n) hA (bd n) hD
+                                                                                                   (t/app hN1 n hn1)
+                                                                                                   (t/app hN2 n hn2)))))))))))))))))
+        (define! "mul" (t/arrow R (t/arrow R R))
+          (t/lift2* qconf cmul (fn [a a' b b' ha hb] (t/app (c "mul_congr") a a' b b' ha hb))))))))
+
 ;; ## Installation
 
 (defn install!
@@ -344,5 +543,6 @@
         (t/quot-mk CSeq (c "Equiv")
                    (t/app (k/const "Subtype.mk" l1) Seq (c "Cauchy")
                           (t/app (c "constSeq") x) (t/app (c "const_cauchy") x)))))
-    (install-add-neg!))
+    (install-add-neg!)
+    (install-mul!))
   :installed)

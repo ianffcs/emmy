@@ -16,7 +16,15 @@
    "le_trans" "lt_of_lt_of_le" "lt_of_le_of_lt" "le_antisymm" "lt_trichotomy"
    "add_lt_add_left" "add_le_add_left" "mul_pos" "mul_nonneg" "abs_congr_rep" "abs_nonneg"
    "abs_mul" "abs_triangle" "archimedean" "half_add_half" "half_pos" "inv_congr_rep"
-   "mul_inv_cancel" "ne_of_lt" "zero_lt_one" "zero_ne_one"])
+   "mul_inv_cancel" "ne_of_lt" "zero_lt_one" "zero_ne_one" "inv_pos"
+   ;; metric lemmas
+   "sub_self" "neg_sub" "sub_add_sub" "add_sub_cancel" "abs_zero" "abs_neg" "abs_sub_comm"
+   "dist_triangle" "add_lt_add" "sub_add_add" "neg_sub_neg" "dist_add_le" "dist_neg"
+   "half_pos_of_pos"
+   ;; multiplication and order
+   "add_zero" "mul_lt_mul_of_pos_left" "mul_le_mul_of_nonneg_left" "le_add_of_nonneg_right"
+   "le_add_of_nonneg_left" "lt_add_of_pos_right" "lt_add_of_pos_left" "abs_le_add_dist"
+   "mul_sub_mul" "dist_mul_le" "mul_lt_of_lt_of_lt" "mul_inv_mul"])
 
 (deftest ordered-field-theorems
   (is (= :installed (q/install!)))

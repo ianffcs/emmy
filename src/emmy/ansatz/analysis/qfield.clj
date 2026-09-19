@@ -542,6 +542,32 @@
                               :term (sound (t/app (r "mul") a v) (c "repOne")
                                            (equiv-proof (rmul (leaf a) vx) rone))}]
                    (:term (k/trans step1 step2)))))))
+    (q-theorem! "inv_pos" 1
+      (fn [[p]] (implies (lt zero p) (lt zero (inv p))))
+      (fn [[a]]
+        (let [hyp (rel-prop o/lt rzero (leaf a))
+              motive (t/lambda [[z rep]] (rel-prop o/lt rzero (leaf z)))]
+          (t/lam "h" hyp
+                 (fn [h]
+                   (t/or-elim (num0 a) (t/not' (num0 a)) (t/app motive (rep-inv a))
+                              (t/decidable-em (num0 a) (inst a))
+                              ;; num a = 0 contradicts 0 < a
+                              (t/lam "hz" (num0 a)
+                                     (fn [hz]
+                                       (o/by-omega (rel-prop o/lt rzero (leaf (rep-inv a)))
+                                                   [[hyp h] [(num0 a) hz]])))
+                              ;; otherwise inv a = ⟨n·d, n·n⟩ with 0 < n·d
+                              (t/lam "hn" (t/not' (num0 a))
+                                     (fn [hn]
+                                       (let [x (nonzero-rep a hn)
+                                             na (rnum a) da (rden a)
+                                             pn (o/by-omega (o/lt k/zero na) [[hyp h]])
+                                             prod [(o/lt k/zero (k/mul na da)) (int-mul-pos na da pn (den-pos a))]
+                                             px (o/by-omega (o/lt (k/mul k/zero (k/mul na na)) (k/mul (k/mul na da) k/one))
+                                                            [prod])]
+                                         (t/transport-at rep l1 motive x (rep-inv a)
+                                                         (t/app (k/const "Eq.symm" l1) rep (rep-inv a) x (dif false a hn))
+                                                         px))))))))))
     (let [lt-irrefl #(t/app (c "lt_irrefl") %)]
       (theorem! "ne_of_lt"
         (t/forall [[p Q] [q Q]] (implies (lt p q) (t/not' (eq-q p q))))
@@ -635,6 +661,102 @@
     (t/lambda [[e Q] [h (lt zero e)]]
       (t/app (c "mul_pos") half e (c "half_pos") h))))
 
+;; ## Multiplication and order
+
+(defn- eq-symm [x y e] (t/app (k/const "Eq.symm" l1) Q x y e))
+
+(defn- install-mul-order! []
+  (quot-law! "add_zero" 1 #(add % zero) identity #(radd % rzero) identity)
+  ;; s·p REL s·q: scale the hypothesis by num s · den s
+  (doseq [[label kind] [["mul_lt_mul_of_pos_left" :lt] ["mul_le_mul_of_nonneg_left" :le]]]
+    (q-theorem! label 3
+      (fn [[p q s]] (let [rel (if (= kind :lt) lt le)] (implies (rel p q) (rel zero s) (rel (mul s p) (mul s q)))))
+      (fn [[a b s]]
+        (let [rel (:rel (relations kind))
+              hyp (rel-prop rel (leaf a) (leaf b))
+              hs-prop (rel-prop rel rzero (leaf s))]
+          (t/lam "h" hyp
+                 (fn [h]
+                   (t/lam "hs" hs-prop
+                          (fn [hs]
+                            (let [ns (rnum s) ds (rden s)
+                                  x (k/mul (rnum a) (rden b)) y (k/mul (rnum b) (rden a))
+                                  z (k/mul ns ds)
+                                  pn (o/by-omega (rel k/zero ns) [[hs-prop hs]])
+                                  f (if (= kind :lt)
+                                      [(o/lt (k/mul z x) (k/mul z y))
+                                       (t/app (k/const "Int.mul_lt_mul_of_pos_left") x y z h
+                                              (int-mul-pos ns ds pn (den-pos s)))]
+                                      [(o/le (k/mul z x) (k/mul z y))
+                                       (t/app (k/const "Int.mul_le_mul_of_nonneg_left") x y z h
+                                              (o/mul-nonneg ns ds pn (t/app (k/const "Int.le_of_lt") k/zero ds (den-pos s))))])]
+                              (o/by-omega (rel-prop rel (rmul (leaf s) (leaf a)) (rmul (leaf s) (leaf b))) [f]))))))))))
+  (theorem! "le_add_of_nonneg_right"
+    (t/forall [[p Q] [s Q]] (implies (le zero s) (le p (add p s))))
+    (t/lambda [[p Q] [s Q] [h (le zero s)]]
+      (rewrite-q #(le % (add p s)) (add p zero) p (t/app (c "add_zero") p)
+                 (t/app (c "add_le_add_left") zero s p h))))
+  (theorem! "le_add_of_nonneg_left"
+    (t/forall [[p Q] [s Q]] (implies (le zero s) (le p (add s p))))
+    (t/lambda [[p Q] [s Q] [h (le zero s)]]
+      (rewrite-q #(le p %) (add p s) (add s p) (t/app (c "add_comm") p s)
+                 (t/app (c "le_add_of_nonneg_right") p s h))))
+  (theorem! "lt_add_of_pos_right"
+    (t/forall [[p Q] [s Q]] (implies (lt zero s) (lt p (add p s))))
+    (t/lambda [[p Q] [s Q] [h (lt zero s)]]
+      (rewrite-q #(lt % (add p s)) (add p zero) p (t/app (c "add_zero") p)
+                 (t/app (c "add_lt_add_left") zero s p h))))
+  (theorem! "lt_add_of_pos_left"
+    (t/forall [[p Q] [s Q]] (implies (lt zero s) (lt p (add s p))))
+    (t/lambda [[p Q] [s Q] [h (lt zero s)]]
+      (rewrite-q #(lt p %) (add p s) (add s p) (t/app (c "add_comm") p s)
+                 (t/app (c "lt_add_of_pos_right") p s h))))
+  (theorem! "abs_le_add_dist"
+    (t/forall [[a Q] [b Q]] (le (abs a) (add (abs b) (abs (sub a b)))))
+    (t/lambda [[a Q] [b Q]]
+      (rewrite-q #(le (abs %) (add (abs b) (abs (sub a b)))) (add b (sub a b)) a
+                 (t/app (c "add_sub_cancel") a b)
+                 (t/app (c "abs_triangle") b (sub a b)))))
+  ;; a·c − b·d = a·(c − d) + d·(a − b)
+  (quot-law! "mul_sub_mul" 4 #(sub (mul %1 %3) (mul %2 %4)) #(add (mul %1 (sub %3 %4)) (mul %4 (sub %1 %2)))
+             #(radd (rmul %1 %3) (rneg (rmul %2 %4)))
+             #(radd (rmul %1 (radd %3 (rneg %4))) (rmul %4 (radd %1 (rneg %2)))))
+  (theorem! "dist_mul_le"
+    (t/forall [[a Q] [b Q] [s Q] [u Q]]
+      (le (abs (sub (mul a s) (mul b u))) (add (mul (abs a) (abs (sub s u))) (mul (abs u) (abs (sub a b))))))
+    (t/lambda [[a Q] [b Q] [s Q] [u Q]]
+      (let [x1 (mul a (sub s u)) x2 (mul u (sub a b))
+            y1 (mul (abs a) (abs (sub s u))) y2 (mul (abs u) (abs (sub a b)))
+            lhs (abs (sub (mul a s) (mul b u)))
+            tri (rewrite-q #(le (abs %) (add (abs x1) (abs x2))) (add x1 x2) (sub (mul a s) (mul b u))
+                           (eq-symm (sub (mul a s) (mul b u)) (add x1 x2) (t/app (c "mul_sub_mul") a b s u))
+                           (t/app (c "abs_triangle") x1 x2))
+            tri' (rewrite-q #(le lhs (add % (abs x2))) (abs x1) y1 (t/app (c "abs_mul") a (sub s u)) tri)]
+        (rewrite-q #(le lhs (add y1 %)) (abs x2) y2 (t/app (c "abs_mul") u (sub a b)) tri'))))
+  (theorem! "mul_lt_of_lt_of_lt"
+    (t/forall [[x Q] [a Q] [y Q] [b Q]]
+      (implies (le zero x) (lt x a) (le zero y) (lt y b) (lt (mul x y) (mul a b))))
+    (t/lambda [[x Q] [a Q] [y Q] [b Q] [hx (le zero x)] [hxa (lt x a)] [hy (le zero y)] [hyb (lt y b)]]
+      (let [h1 (t/app (c "mul_le_mul_of_nonneg_left") y b x (t/app (c "le_of_lt") y b hyb) hx)   ; x·y ≤ x·b
+            hb (t/app (c "lt_of_le_of_lt") zero y b hy hyb)
+            h2 (t/app (c "mul_lt_mul_of_pos_left") x a b hxa hb)                                ; b·x < b·a
+            h2' (rewrite-q #(lt % (mul b a)) (mul b x) (mul x b) (t/app (c "mul_comm") b x) h2)
+            h2'' (rewrite-q #(lt (mul x b) %) (mul b a) (mul a b) (t/app (c "mul_comm") b a) h2')]
+        (t/app (c "lt_of_le_of_lt") (mul x y) (mul x b) (mul a b) h1 h2''))))
+  (theorem! "mul_inv_mul"
+    (t/forall [[a Q] [e Q]] (implies (lt zero a) (eq-q (mul a (mul (inv a) e)) e)))
+    (t/lambda [[a Q] [e Q] [h (lt zero a)]]
+      (let [ne (t/lam "h0" (eq-q a zero)
+                      #(t/app (c "ne_of_lt") zero a h (eq-symm a zero %)))
+            inv1 (t/app (c "mul_inv_cancel") a ne)]
+        (:term (k/trans (q-eq-map (mul a (mul (inv a) e)) (mul (mul a (inv a)) e)
+                                  (eq-symm (mul (mul a (inv a)) e) (mul a (mul (inv a) e))
+                                           (t/app (c "mul_assoc") a (inv a) e)))
+                        (q-eq-map (mul (mul a (inv a)) e) (mul one e)
+                                  (t/app (k/const "congrArg" l1 l1) Q Q (mul a (inv a)) one
+                                         (t/lambda [[z Q]] (mul z e)) inv1))
+                        (q-eq-map (mul one e) e (t/app (c "one_mul") e))))))))
+
 (defn install!
   "Installs ℚ as an ordered commutative ring with absolute value, the
   Archimedean property and halving. Idempotent."
@@ -668,5 +790,6 @@
     (install-abs!)
     (install-archimedean-and-half!)
     (install-field!)
-    (install-metric!))
+    (install-metric!)
+    (install-mul-order!))
   :installed)

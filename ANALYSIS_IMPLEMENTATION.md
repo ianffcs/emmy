@@ -39,8 +39,9 @@ carrier has the real field's mathematical properties.
 
 1. ~~Representative equivalence and operation congruence; the rational quotient
    field with order~~ (done, M1).
-2. Cauchy equivalence, well-defined arithmetic and inverse on the quotient;
-   rational embedding, order, Archimedean property, density, and completeness.
+2. ~~Cauchy equivalence and well-defined `add`/`neg`/`mul` on the quotient~~
+   (done, M2); ring laws, inverse, order, Archimedean property, density and
+   completeness (M3).
 3. Real metric/open-set topology, neighborhood limits, continuity of arithmetic.
 4. Epsilon-delta `HasDerivAt`, uniqueness and constant/id/add/neg/mul/chain laws;
    polynomial real semantics, rational cast bridge and derivative correctness.
@@ -88,6 +89,31 @@ cross-multiplied identity (`quot-law!`, `q-theorem!`).
 `by-omega` now ring-normalizes both sides of every relation first (shared atom
 order), and respells literal coefficients as repeated sums, since Ansatz's
 `omega` accepts no multiplication by literals.
+
+## Cauchy reals (M2)
+
+`analysis.reals` builds `Emmy.Analysis.R.R := Quot CSeq Equiv` on `Q`:
+
+- `Cauchy s := ∀ ε > 0, ∃ N, ∀ m n, N ≤ m → N ≤ n → |s m − s n| < ε`,
+  `CSeq := {s : Nat → Q // Cauchy s}`, and
+  `Equiv s t := ∀ ε > 0, ∃ N, ∀ n, N ≤ n → |s n − t n| < ε`, with
+  `equiv_refl`, `equiv_symm`, `equiv_trans`.
+- `ofQ` through constant sequences (`const_cauchy`); `zero`, `one`.
+- `bounded : Cauchy f → ∃ B, 0 < B ∧ ∀ n, |f n| < B`, via the finite bound
+  `bounded_below` (by `Nat.rec`) and the Cauchy tail at ε = 1.
+- Pointwise `addSeq`, `negSeq`, `mulSeq` with `add_cauchy`, `neg_cauchy`,
+  `mul_cauchy` and the congruences `add_congr`, `neg_congr`, `mul_congr`; the
+  operations `add`, `neg`, `sub`, `mul` on `R` are lifted by
+  `lift1*`/`lift2*`. No choice is used for these.
+- ε-N proofs split ε with `Q.half` and combine thresholds as `N₁ + N₂`. For
+  products, `|a·c − b·d| ≤ |a|·|c − d| + |d|·|a − b|` (`Q.dist_mul_le`) with
+  tolerances `B⁻¹·(ε/2)` (`Q.inv_pos`, `Q.mul_inv_mul`).
+
+Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
+`dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative
+order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,
+`mul_lt_of_lt_of_lt`, `abs_le_add_dist`, `le_add_of_nonneg_*`,
+`lt_add_of_pos_*`).
 
 ## Rational coefficients in the verified calculus
 

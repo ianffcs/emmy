@@ -11,11 +11,11 @@
 
 (def ^:private theorems
   ["equiv_refl" "equiv_symm" "equiv_trans" "const_cauchy" "add_cauchy" "neg_cauchy"
-   "add_congr" "neg_congr"])
+   "add_congr" "neg_congr" "bounded_below" "bounded" "mul_cauchy" "mul_congr"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"
-   "add" "neg" "sub" "zero" "one"])
+   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul"])
 
 (deftest cauchy-reals
   (is (= :installed (r/install!)))
