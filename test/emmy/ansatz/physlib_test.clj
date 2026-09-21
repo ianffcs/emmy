@@ -2,6 +2,7 @@
 
 (ns emmy.ansatz.physlib-test
   (:require [clojure.test :refer [deftest is]]
+            [emmy.ansatz.core :as k]
             [emmy.ansatz.expression :as expression]
             [emmy.ansatz.physlib :as physlib]
             [emmy.expression :as x]
@@ -21,3 +22,13 @@
     (is (nil? (ns-resolve 'emmy.ansatz.physlib 'has-deriv-at?)))
     (is (= 4.5 (:value certificate)))
     (is (= 3.0 (:derivative-value certificate)))))
+
+(deftest real-derivative-proofs
+  (doseq [expr ['(/ (* x x) 2) '(* 1/3 (expt x 3)) '(* -2/7 x y) 4/9]]
+    (is (physlib/derivative-proof? (physlib/derivative-proof expr 'x))))
+  (let [p (physlib/derivative-proof '(* 1/2 x x y) 'x)]
+    (is (= ['y] (:params p)))
+    (is (not (physlib/derivative-proof? (assoc p :proof nil))))
+    (is (not (physlib/derivative-proof? (assoc p :statement (k/eq k/zero (k/lit 1))))))
+    (is (not (physlib/derivative-proof? (assoc p :expression '(* x x x)))))
+    (is (not (physlib/derivative-proof? (assoc p :params ['z]))))))

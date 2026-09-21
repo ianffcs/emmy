@@ -148,7 +148,7 @@
               (t/lam (first names) ty (fn [x] (go (rest names) (conj acc x))))))]
     (go names [])))
 
-(def ^:private var-names ["p" "q" "s" "u"])
+(def ^:private var-names (map #(str "q" %) (range)))
 
 (defn quot-law!
   "Installs `∀ q₁ … qₙ : Q, lhs = rhs`, where `q-lhs`/`q-rhs` build the `Q`

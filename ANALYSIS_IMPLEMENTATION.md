@@ -47,8 +47,9 @@ not prove field properties; those are separate checked theorems in M1–M3.
    M2/M3: `R` is a complete ordered field).
 3. ~~Real epsilon-ball/open-set topology, neighborhood limits, continuity of
    arithmetic, and equivalence with preimage continuity~~ (done, M4).
-4. Epsilon-delta `HasDerivAt`, uniqueness and constant/id/add/neg/mul/chain laws;
-   polynomial real semantics, rational cast bridge and derivative correctness.
+4. ~~Epsilon-delta `HasDerivAt`, uniqueness and constant/id/add/neg/mul/chain
+   laws; polynomial real semantics, rational cast bridge and derivative
+   correctness~~ (done, M5/M6).
 5. Finite-dimensional derivatives and Euler–Lagrange physics interfaces.
 
 No field, completeness, or `HasDerivAt` axioms are introduced to bypass these
@@ -219,6 +220,26 @@ This is syntax for nested ordinary `fn` continuations, not a new tactic or proof
 rule. The sum-limit proof and the real topology proofs use it. Scope, evaluation
 order, malformed input, kernel verification, and lint bindings are covered by
 tests and the associated clj-kondo hook.
+
+## Analytic derivatives (M5) and the polynomial bridge (M6)
+
+`analysis.derivative` defines the difference quotient `slope f x y` and
+`HasDerivAt f d x := TendsToAt (slope f x) x d`, the punctured epsilon-delta
+derivative. Proved: `unique`, `const`, `id`, `add`, `neg`, `mul` and `comp`
+(the chain rule), plus `continuousAt` (differentiable implies continuous) and
+the `RemainderBound` form `remainder_iff`, which converts between the
+difference-quotient and first-order-residual statements — the residual form is
+what the product and chain estimates use.
+
+Ring identities in these proofs come from `reals/ring-identity!`, a function
+that takes symbolic `+ * - 0 1` forms and installs the matching `Q` and `R`
+laws by reduction to an integer ring identity; it is a proof builder, not a
+trusted oracle (a false identity is rejected, and the tests check that).
+
+`analysis.polynomial` gives `Emmy.PolyExpr` real semantics and proves
+`deriv_hasDerivAt`: for every closed `PolyExpr`, the syntactic `deriv` computes
+an analytic derivative of the function it denotes. That is the bridge from the
+verified symbolic calculus to the epsilon-delta derivative on `R`.
 
 ## Rational coefficients in the verified calculus
 

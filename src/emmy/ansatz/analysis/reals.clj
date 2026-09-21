@@ -483,7 +483,7 @@
   `R` terms and `c-lhs`/`c-rhs` from `CSeq` terms; `pointwise` maps the `CSeq`
   fvars and an index `n` to a proof of the `Q` equation at `n`."
   [label n r-lhs r-rhs c-lhs c-rhs pointwise]
-  (let [names (take n ["x" "y" "z" "w"])
+  (let [names (map #(str "x" %) (range n))
         statement (fn [xs] (eq-r (apply r-lhs xs) (apply r-rhs xs)))]
     (theorem! label
       (q/pis names R statement)
@@ -495,6 +495,42 @@
                                      (t/quot-sound CSeq (c "Equiv") a b
                                                    (t/app (c "equiv_of_eq") a b
                                                           (t/lam "n" Nat #(apply pointwise (conj ss %)))))))))))))
+
+(defn ring-identity!
+  "Installs a checked real ring identity from symbolic +, *, -, 0 and 1 forms.
+  `vars` lists the symbols. The proof reduces through both quotient layers to
+  an integer ring identity; this is not a trusted algebra oracle. Call install!
+  first. Returns the real theorem constant."
+  [label vars lhs rhs]
+  (letfn [(interpret [ops bindings form]
+            (cond
+              (contains? bindings form) (get bindings form)
+              (= form 0) (:zero ops)
+              (= form 1) (:one ops)
+              (seq? form)
+              (let [[op & args] form
+                    args (mapv #(interpret ops bindings %) args)]
+                (case op
+                  + (if (seq args) (reduce (:add ops) args) (:zero ops))
+                  * (if (seq args) (reduce (:mul ops) args) (:one ops))
+                  - (if (= 1 (count args)) ((:neg ops) (first args))
+                        (reduce (fn [a b] ((:add ops) a ((:neg ops) b))) args))
+                  (throw (ex-info "Unsupported ring operation" {:form form}))))
+              :else (throw (ex-info "Unsupported ring atom" {:form form}))))
+          (side [ops form]
+            (fn [& args] (interpret ops (zipmap vars args) form)))]
+    (let [qops {:add q/add :mul q/mul :neg q/neg :zero q/zero :one q/one}
+          reps {:add q/radd :mul q/rmul :neg q/rneg :zero q/rzero :one q/rone}
+          rops {:add add :mul mul :neg neg :zero zero :one one}
+          seqs {:add cadd :mul cmul :neg cneg :zero (cconst q/zero) :one (cconst q/one)}
+          qlabel (str "RealRing." label)]
+      (q/quot-law! qlabel (count vars) (side qops lhs) (side qops rhs)
+                    (side reps lhs) (side reps rhs))
+      (r-law! label (count vars) (side rops lhs) (side rops rhs)
+              (side seqs lhs) (side seqs rhs)
+              (fn [& args]
+                (apply t/app (qc qlabel) (map #(at % (last args)) (butlast args)))))
+      (c label))))
 
 (defn- install-ring-laws! []
   (theorem! "equiv_of_eq"
@@ -1954,6 +1990,12 @@
 
 (defn- install-limit-lemmas! []
   (let [symm-r (fn [x y e] (t/app (k/const "Eq.symm" l1) R x y e))]
+    (r-law! "abs_zero" 0 (fn [] (abs zero)) (fn [] zero)
+            (fn [] (cabs (cconst q/zero))) (fn [] (cconst q/zero))
+            (fn [_n] (qc "abs_zero")))
+    (r-law! "abs_mul" 2 #(abs (mul %1 %2)) #(mul (abs %1) (abs %2))
+            #(cabs (cmul %1 %2)) #(cmul (cabs %1) (cabs %2))
+            (fn [x y n] (t/app (qc "abs_mul") (at x n) (at y n))))
     (theorem! "zero_lt_one" (lt zero one)
       (t/app (c "zero_lt_ofQ") q/one (qc "zero_lt_one")))
     (r-law! "abs_sub_self" 1 #(abs (sub % %)) (constantly zero)
