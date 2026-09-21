@@ -5,6 +5,8 @@
             [emmy.ansatz.analysis.kernel :as t]))
 
 (deftest implication-chain
+  (is (= (t/arrow t/prop (t/arrow t/prop t/prop))
+         (t/>-> t/prop t/prop t/prop)))
   (is (= '(emmy.ansatz.analysis.kernel/arrow A B)
          (macroexpand '(emmy.ansatz.analysis.kernel/>-> A B))))
   (is (= '(emmy.ansatz.analysis.kernel/arrow

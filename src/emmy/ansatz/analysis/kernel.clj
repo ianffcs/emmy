@@ -23,13 +23,15 @@
 
 (defonce ^:private ids (atom 8000000000))
 
-(defn pi [label domain body]
+(defn pi
   "Build a dependent function type, abstracting over a fresh free variable."
+  [label domain body]
   (let [id (swap! ids inc)]
     (e/forall' label domain (e/abstract1 (body (e/fvar id)) id) :default)))
 
-(defn lam [label domain body]
+(defn lam
   "Build a typed lambda term, abstracting over a fresh free variable."
+  [label domain body]
   (let [id (swap! ids inc)]
     (e/lam label domain (e/abstract1 (body (e/fvar id)) id) :default)))
 
@@ -92,7 +94,7 @@
   (apply e/app* f xs))
 
 (defn predicate
-  "Turn a proposition into its proof type."
+  "Build the predicate type `a → Prop`."
   [a]
   (arrow a prop))
 

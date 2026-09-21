@@ -57,7 +57,7 @@
 ;; ## Coordinates
 
 (defn- install-coordinates! []
-  (declare! :def "update" (t/arrow Pt (t/arrow Nat (t/arrow R Pt)))
+  (declare! :def "update" (t/>-> Pt Nat R Pt)
     (t/lambda [[p Pt] [i Nat] [s R] [j Nat]]
       (t/app (k/const "ite" u) R (eq-nat j i) (t/app (k/const "Nat.decEq") j i)
              s (t/app p j))))
@@ -98,8 +98,9 @@
   ;; a pointwise equal function has the same derivative
   (declare! :thm "hasDerivAt_congr"
     (t/forall [[f FnR] [g FnR] [dv R] [x R]]
-      (t/arrow (t/forall [[y R]] (eq (t/app f y) (t/app g y)))
-               (t/arrow (d/has-deriv-at f dv x) (d/has-deriv-at g dv x))))
+      (t/>-> (t/forall [[y R]] (eq (t/app f y) (t/app g y)))
+             (d/has-deriv-at f dv x)
+             (d/has-deriv-at g dv x)))
     (t/lambda [[f FnR] [g FnR] [dv R] [x R]
                [h (t/forall [[y R]] (eq (t/app f y) (t/app g y)))]
                [hf (d/has-deriv-at f dv x)]]

@@ -62,12 +62,18 @@
   "`∃ N, ∀ n, N ≤ n → P n`, with `P` a function from a `Nat` term to a
   proposition."
   [P]
-  (t/exists' Nat (t/lambda [[N Nat]] (t/forall [[n Nat]] (t/arrow (nat-le N n) (P n))))))
+  (t/exists' Nat
+    (t/lambda [[N Nat]]
+      (t/forall [[n Nat]]
+        (t/arrow (nat-le N n) (P n))))))
 
 (defn- eventually-intro
   "Proof of `eventually P` from the threshold `N` and `f : ∀ n, N ≤ n → P n`."
   [P N f]
-  (t/exists-intro Nat (t/lambda [[M Nat]] (t/forall [[n Nat]] (t/arrow (nat-le M n) (P n)))) N f))
+  (let [tail-property (t/lambda [[M Nat]]
+                        (t/forall [[n Nat]]
+                          (t/arrow (nat-le M n) (P n))))]
+    (t/exists-intro Nat tail-property N f)))
 
 (defn- eventually-elim
   "Proof of `goal` from `h : eventually P` and `k : ∀ N, (∀ n, N ≤ n → P n) → goal`

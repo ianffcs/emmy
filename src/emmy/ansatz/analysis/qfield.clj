@@ -95,24 +95,27 @@
   `op`, given `congr : ∀ a a' b b', a ≈ a' → b ≈ b' → op a b ≈ op a' b'`."
   [op congr]
   (let [refl #(t/app (r "equiv_refl") %)
+        ;; Fix the first representative and lift the second argument.
         inner (fn [a q2]
-                (t/app (t/quot-lift rep equiv-rel Q
-                                    (t/lambda [[b rep]] (mk (t/app op a b)))
-                                    (t/lambda [[b rep] [b' rep] [h (rat/equiv b b')]]
-                                      (sound (t/app op a b) (t/app op a b')
-                                             (t/app congr a a b b' (refl a) h))))
-                       q2))]
+                (let [operation (t/lambda [[b rep]] (mk (t/app op a b)))
+                      respects-equiv
+                      (t/lambda [[b rep] [b' rep] [h (rat/equiv b b')]]
+                        (sound (t/app op a b) (t/app op a b')
+                               (t/app congr a a b b' (refl a) h)))]
+                  (t/app (t/quot-lift rep equiv-rel Q operation respects-equiv) q2)))]
     (t/lambda [[q1 Q] [q2 Q]]
-      (t/app (t/quot-lift rep equiv-rel Q
-                          (t/lambda [[a rep]] (inner a q2))
-                          (t/lambda [[a rep] [a' rep] [h (rat/equiv a a')]]
-                            (t/app (t/quot-ind rep equiv-rel
-                                               (t/lambda [[q Q]] (k/eq-at Q l1 (inner a q) (inner a' q)))
-                                               (t/lambda [[b rep]]
-                                                 (sound (t/app op a b) (t/app op a' b)
-                                                        (t/app congr a a' b b h (refl b)))))
-                                   q2)))
-             q1))))
+      (let [operation (t/lambda [[a rep]] (inner a q2))
+            ;; Quotient induction proves independence of the first representative.
+            respects-equiv
+            (t/lambda [[a rep] [a' rep] [h (rat/equiv a a')]]
+              (let [motive (t/lambda [[q Q]]
+                             (k/eq-at Q l1 (inner a q) (inner a' q)))
+                    representative-proof
+                    (t/lambda [[b rep]]
+                      (sound (t/app op a b) (t/app op a' b)
+                             (t/app congr a a' b b h (refl b))))]
+                (t/app (t/quot-ind rep equiv-rel motive representative-proof) q2)))]
+        (t/app (t/quot-lift rep equiv-rel Q operation respects-equiv) q1)))))
 
 (defn quot-ind-all
   "Proof of `∀ q₁ … qₙ : Q, P q₁ … qₙ` given as the proof terms for
