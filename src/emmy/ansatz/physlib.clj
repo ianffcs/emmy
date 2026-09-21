@@ -26,10 +26,11 @@
     (throw (ex-info "The coordinate must be a symbol" {:variable var})))
   (k/ensure-init!)
   (when-not (k/installed? polynomial/theorem-name) (polynomial/install!))
-  (let [ir (expression/->ir expr)
-        params (expression/params-of ir var)]
+  (let [ir     (expression/->ir expr)
+        params (expression/params-of ir var)
+        value  (expression/ir->value ir var params)]
     {:params params
-     :term (polynomial/value->term (expression/ir->value ir var params))}))
+     :term   (polynomial/value->term value)}))
 
 (defn derivative-proof
   "Returns a kernel proof of the polynomial's analytic derivative over ℝ.
@@ -43,8 +44,11 @@
          proof (t/app (k/const polynomial/theorem-name) term)]
      (when-not (env/verifies? (k/env) statement proof)
        (throw (ex-info "Kernel rejected polynomial derivative proof" {:expression expr})))
-     {:expression (x/expression-of expr) :variable var :params params
-      :statement statement :proof proof})))
+     {:expression (x/expression-of expr)
+      :variable   var
+      :params     params
+      :statement  statement
+      :proof      proof})))
 
 (defn derivative-proof?
   "Checks the proof against the full statement AND reconstructs the expected
@@ -73,10 +77,13 @@
    (let [poly (expression/->poly-expr expr var)
          deriv (calculus/deriv-poly poly)
          deriv (simplify/simp-poly deriv)]
-     {:kind ::polynomial-derivative-report :at x :poly poly :derivative deriv
-      :certified? false
-      :theorem calculus/theorem-name
-      :value (approximate-value poly x)
+     {:kind            ::polynomial-derivative-report
+      :at              x
+      :poly            poly
+      :derivative      deriv
+      :certified?      false
+      :theorem         calculus/theorem-name
+      :value           (approximate-value poly x)
       :derivative-value (approximate-value deriv x)})))
 
 (defn time-deriv

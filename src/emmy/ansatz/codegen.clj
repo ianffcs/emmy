@@ -18,13 +18,13 @@
   ([value var params]
    (let [[tag a b] value]
      (case (long tag)
-       0 a
-       1 var
+       0 a                                             ; const
+       1 var                                           ; X
        2 (list '+ (->form a var params) (->form b var params))
        3 (list '* (->form a var params) (->form b var params))
        4 (list '- (->form a var params))
-       5 (nth params a)
-       6 (/ a (inc b))))))
+       5 (nth params a)                                ; param
+       6 (/ a (inc b))))))                             ; rational literal
 
 (defn ->emmy
   "The Emmy symbolic expression for the runtime `PolyExpr` `value`, with `X`
