@@ -8,7 +8,7 @@
 (deftest every-listed-namespace-has-an-installer
   (doseq [ns-sym install/ns-list]
     (testing (str ns-sym)
-      (is (fn? (install/installer ns-sym))))))
+      (is (ifn? (install/installer ns-sym))))))
 
 (deftest prerequisites-come-first
   (is (= ['emmy.ansatz.algebra] (install/through 'emmy.ansatz.algebra)))

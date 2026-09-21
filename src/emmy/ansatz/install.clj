@@ -9,6 +9,11 @@
   installers. This namespace owns the order, and its `!` functions are the IO
   edges that publish a context to the global Ansatz environment.
 
+  A namespace may also define `register!`, an IO function for process-global
+  state that is not part of the kernel environment (for example tactics). The
+  `!` functions here run it first; [[register-all!]] runs every one, which is
+  what a program working only with pure contexts needs.
+
   ```clojure
   (install/install-all!)                                   ; everything, in order
   (install/install-through! 'emmy.ansatz.analysis.lagrange) ; one namespace and what it needs
@@ -58,6 +63,19 @@
         (fn [_ctx] (legacy) (k/base-ctx)))
       (throw (ex-info "Namespace has no installer" {:ns ns-sym}))))
 
+(defn register!
+  "IO edge. Runs `ns-sym`'s `register!` if it has one (process-global state such
+  as tactics; idempotent)."
+  [ns-sym]
+  (when-let [register (resolve-in ns-sym 'register!)]
+    (register)))
+
+(defn register-all!
+  "IO edge. Runs every namespace's `register!`, without touching the kernel
+  environment."
+  []
+  (run! register! ns-list))
+
 (defn through
   "`ns-sym` preceded by every namespace it needs, in installation order."
   [ns-sym]
@@ -72,8 +90,9 @@
   (reduce (fn [ctx ns-sym] ((installer ns-sym) ctx)) ctx nss))
 
 (defn install!
-  "IO edge. Installs one namespace into the global environment."
+  "IO edge. Registers and installs one namespace into the global environment."
   [ns-sym]
+  (register! ns-sym)
   (k/commit! (installer ns-sym)))
 
 (defn install-all!

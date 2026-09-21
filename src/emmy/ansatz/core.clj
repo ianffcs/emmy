@@ -32,7 +32,10 @@
             [ansatz.kernel.env :as env]
             [ansatz.kernel.expr :as e]
             [ansatz.kernel.level :as lvl]
-            [ansatz.kernel.name :as name]))
+            [ansatz.kernel.name :as name]
+            [ansatz.tactic.basic :as basic]
+            [ansatz.tactic.extract :as extract]
+            [ansatz.tactic.proof :as proof]))
 
 ;; ## Environment
 
@@ -139,6 +142,22 @@
   "True if the kernel accepts `proof` as a proof of `statement` in the context."
   [{:keys [env]} statement proof]
   (env/verifies? env statement proof))
+
+(defn prove-law
+  "Runs the Ansatz tactic block `tactics` (surface forms such as `'[(omega)]`)
+  on the closed goal `goal`, an `Expr`, in the context's environment. The
+  binders of `goal` are introduced under `names`. Returns `[goal proof]` and
+  installs nothing. This is `ansatz.core/prove-law` with the environment made
+  explicit instead of read from the global atom; the kernel verifies the proof
+  before it is returned."
+  [{:keys [env]} names goal tactics]
+  (let [[ps _] (proof/start-proof env goal)
+        ps (if (seq names) (basic/intros ps (mapv str names)) ps)
+        ps (reduce a/run-tactic ps tactics)]
+    (when-not (proof/solved? ps)
+      (throw (ex-info (str "Proof incomplete\n" (proof/format-goals ps)) {:ps ps})))
+    (extract/verify ps)
+    [goal (extract/extract ps)]))
 
 (defmacro quietly
   "Evaluates `body` with Ansatz's progress output suppressed."
@@ -317,13 +336,13 @@
   [p q]
   (congr-binop mul-op p q))
 
-(defn lemma
-  "Instantiates the `Init` equation named `lemma-name` (e.g. `\"Int.add_mul\"`)
-  at the explicit arguments `args`, returning a proof map. The lemma's
-  statement comes from the kernel environment, so the sides are exactly what
-  the kernel expects."
-  [lemma-name & args]
-  (let [ci (or (env/lookup (env) (name/from-string lemma-name))
+(defn lemma-in
+  "Instantiates the equation named `lemma-name` (e.g. `\"Int.add_mul\"`) of the
+  context's environment at the explicit arguments `args`, returning a proof
+  map. The lemma's statement comes from the environment, so the sides are
+  exactly what the kernel expects."
+  [ctx lemma-name & args]
+  (let [ci (or (lookup ctx lemma-name)
                (throw (ex-info (str "Unknown lemma " lemma-name) {:lemma lemma-name})))
         prop (reduce (fn [t a]
                        (when-not (e/forall? t)
@@ -337,6 +356,11 @@
                                  {:lemma lemma-name :prop (e/->string prop)})))]
     (assoc view
            :term (apply e/app* (const lemma-name) args))))
+
+(defn lemma
+  "Deprecated: [[lemma-in]] against the global environment."
+  [lemma-name & args]
+  (apply lemma-in (base-ctx) lemma-name args))
 
 ;; ## Closed statements
 
