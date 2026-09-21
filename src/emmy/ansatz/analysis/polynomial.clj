@@ -21,11 +21,20 @@
 (def eval-q-name "Emmy.PolyExpr.evalQ")
 (def cast-name "Emmy.PolyExpr.eval_cast")
 (def theorem-name "Emmy.PolyExpr.deriv_hasDerivAt")
-(defn- pc [s] (k/const (str "Emmy.PolyExpr." s)))
-(defn- dc [s] (k/const (str "Emmy.Analysis.Derivative." s)))
-(defn eval-real [x rho expr] (t/app (k/const eval-name) x rho expr))
-(defn eval-q [x rho expr] (t/app (k/const eval-q-name) x rho expr))
-(defn- function-at [rho expr] (t/lambda [[y r/R]] (eval-real y rho expr)))
+(defn- pc [s]
+  (k/const (str "Emmy.PolyExpr." s)))
+
+(defn- dc [s]
+  (k/const (str "Emmy.Analysis.Derivative." s)))
+
+(defn eval-real [x rho expr]
+  (t/app (k/const eval-name) x rho expr))
+
+(defn eval-q [x rho expr]
+  (t/app (k/const eval-q-name) x rho expr))
+
+(defn- function-at [rho expr]
+  (t/lambda [[y r/R]] (eval-real y rho expr)))
 (defn- fraction [p n]
   (r/of-q (q/mk (rat/make-rep p
     (t/app (k/const "Int.ofNat") (t/app (k/const "Nat.succ") n))

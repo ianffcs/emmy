@@ -65,7 +65,8 @@
     (representative (*' an bn) (*' ad bd))))
 
 (defn negate [a]
-  (let [[n d] (checked a)] (representative (-' n) d)))
+  (let [[n d] (checked a)]
+    (representative (-' n) d)))
 
 (defn- pair-add [[an ad] [bn bd]]
   [(k/add (k/mul an bd) (k/mul bn ad)) (k/mul ad bd)])
@@ -108,7 +109,8 @@
 (def ^:private l0 level/zero)
 (def ^:private l1 (level/succ level/zero))
 (def ^:private prefix "Emmy.Analysis.Rational.")
-(defn- c [s] (k/const (str prefix s)))
+(defn- c [s]
+  (k/const (str prefix s)))
 (def ^:private int-pair (t/app (k/const "Prod" l0 l0) k/int-type k/int-type))
 
 (defn lt

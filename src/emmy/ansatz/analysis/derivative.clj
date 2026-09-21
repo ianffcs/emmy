@@ -12,15 +12,33 @@
 (def R r/R)
 (def FnR (t/arrow R R))
 (def ^:private prefix "Emmy.Analysis.Derivative.")
-(defn- c [s] (k/const (str prefix s)))
-(defn- rc [s] (k/const (str "Emmy.Analysis.R." s)))
-(defn- ring [s & args] (apply t/app (rc (str "DerivativeRing." s)) args))
-(defn- eq [a b] (k/eq-at R u a b))
-(defn- symm [a b h] (t/app (k/const "Eq.symm" u) R a b h))
-(defn- pos [x] (r/lt r/zero x))
-(defn- distance [a b] (r/abs (r/sub a b)))
-(defn slope [f x] (t/app (c "slope") f x))
-(defn has-deriv-at "Kernel proposition: f has derivative d at x." [f d x]
+(defn- c [s]
+  (k/const (str prefix s)))
+
+(defn- rc [s]
+  (k/const (str "Emmy.Analysis.R." s)))
+
+(defn- ring [s & args]
+  (apply t/app (rc (str "DerivativeRing." s)) args))
+
+(defn- eq [a b]
+  (k/eq-at R u a b))
+
+(defn- symm [a b h]
+  (t/app (k/const "Eq.symm" u) R a b h))
+
+(defn- pos [x]
+  (r/lt r/zero x))
+
+(defn- distance [a b]
+  (r/abs (r/sub a b)))
+
+(defn slope [f x]
+  (t/app (c "slope") f x))
+
+(defn has-deriv-at
+  "Kernel proposition: f has derivative d at x."
+  [f d x]
   (t/app (c "HasDerivAt") f d x))
 (defn- declare! [kind label type value]
   (when-not (k/installed? (str prefix label))
