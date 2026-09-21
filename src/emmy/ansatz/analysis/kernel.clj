@@ -11,28 +11,40 @@
             [ansatz.kernel.name :as name]
             [emmy.ansatz.core :as k]))
 
-(def type0 (e/sort' (level/succ level/zero)))
-(def prop (e/sort' level/zero))
+;; ## Core term constructors
+
+(def type0
+  "The first universe (`Type`)."
+  (e/sort' (level/succ level/zero)))
+
+(def prop
+  "The universe of propositions."
+  (e/sort' level/zero))
+
 (defonce ^:private ids (atom 8000000000))
 
 (defn pi [label domain body]
+  "Build a dependent function type, abstracting over a fresh free variable."
   (let [id (swap! ids inc)]
     (e/forall' label domain (e/abstract1 (body (e/fvar id)) id) :default)))
 
 (defn lam [label domain body]
+  "Build a typed lambda term, abstracting over a fresh free variable."
   (let [id (swap! ids inc)]
     (e/lam label domain (e/abstract1 (body (e/fvar id)) id) :default)))
 
 (defmacro forall
   "Constructs nested dependent function types from [symbol type] bindings."
   [bindings body]
-  (reduce (fn [body [sym domain]] `(pi ~(str sym) ~domain (fn [~sym] ~body)))
+  (reduce (fn [body [sym domain]]
+            `(pi ~(str sym) ~domain (fn [~sym] ~body)))
           body (reverse bindings)))
 
 (defmacro lambda
   "Constructs nested typed lambda terms from [symbol type] bindings."
   [bindings body]
-  (reduce (fn [body [sym domain]] `(lam ~(str sym) ~domain (fn [~sym] ~body)))
+  (reduce (fn [body [sym domain]]
+            `(lam ~(str sym) ~domain (fn [~sym] ~body)))
           body (reverse bindings)))
 
 (defmacro with-cont
@@ -55,7 +67,10 @@
      `(~@call (fn ~params ~tail)))
    body (reverse (partition 2 bindings))))
 
-(defn arrow [a b] (e/arrow a b))
+(defn arrow
+  "Build an implication or non-dependent function type `a → b`."
+  [a b]
+  (e/arrow a b))
 
 (defmacro >->
   "Constructs a right-associative implication chain.
@@ -71,10 +86,23 @@
           (last forms)
           (reverse (butlast forms))))
 
-(defn app [f & xs] (apply e/app* f xs))
-(defn predicate [a] (arrow a prop))
-(defn and' [a b] (app (k/const "And") a b))
-(defn exists' [a p] (app (k/const "Exists" (level/succ level/zero)) a p))
+(defn app
+  "Apply a kernel function to one or more arguments."
+  [f & xs]
+  (apply e/app* f xs))
+
+(defn predicate
+  "Turn a proposition into its proof type."
+  [a]
+  (arrow a prop))
+
+(defn and' [a b]
+  (app (k/const "And") a b))
+
+(defn exists' [a p]
+  (app (k/const "Exists" (level/succ level/zero)) a p))
+
+;; ## Checked declarations
 
 (defn install-declaration!
   "Checks a closed definition or theorem and installs it atomically.
@@ -106,16 +134,33 @@
 (def ^:private u0 level/zero)
 (def ^:private u1 (level/succ level/zero))
 
-(defn or' [a b] (app (k/const "Or") a b))
-(defn not' [a] (app (k/const "Not") a))
-(defn iff [a b] (app (k/const "Iff") a b))
-(def false-prop "The proposition `False`." (k/const "False"))
+(defn or' [a b]
+  (app (k/const "Or") a b))
 
-(defn and-intro "Proof of `a ∧ b`." [a b pa pb] (app (k/const "And.intro") a b pa pb))
-(defn and-left "Proof of `a` from `h : a ∧ b`." [a b h] (app (k/const "And.left") a b h))
-(defn and-right "Proof of `b` from `h : a ∧ b`." [a b h] (app (k/const "And.right") a b h))
-(defn or-inl "Proof of `a ∨ b` from `a`." [a b pa] (app (k/const "Or.inl") a b pa))
-(defn or-inr "Proof of `a ∨ b` from `b`." [a b pb] (app (k/const "Or.inr") a b pb))
+(defn not' [a]
+  (app (k/const "Not") a))
+
+(defn iff [a b]
+  (app (k/const "Iff") a b))
+
+(def false-prop
+  "The proposition `False`."
+  (k/const "False"))
+
+(defn and-intro "Proof of `a ∧ b`." [a b pa pb]
+  (app (k/const "And.intro") a b pa pb))
+
+(defn and-left "Proof of `a` from `h : a ∧ b`." [a b h]
+  (app (k/const "And.left") a b h))
+
+(defn and-right "Proof of `b` from `h : a ∧ b`." [a b h]
+  (app (k/const "And.right") a b h))
+
+(defn or-inl "Proof of `a ∨ b` from `a`." [a b pa]
+  (app (k/const "Or.inl") a b pa))
+
+(defn or-inr "Proof of `a ∨ b` from `b`." [a b pb]
+  (app (k/const "Or.inr") a b pb))
 
 (defn or-elim
   "Proof of `c` from `h : a ∨ b`, `left : a → c` and `right : b → c`."
