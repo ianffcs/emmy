@@ -923,6 +923,48 @@
                                                                                                                 (neg (sub y x)) (sub x y)
                                                                                                                 (t/app (c "neg_sub") y x) hn)))))))))))))))))
 
+;; ## The Archimedean property
+
+(defn of-int [m] (t/app (c "ofInt") m))
+
+(defn- install-archimedean! []
+  (define! "ofInt" (t/arrow k/int-type R) (t/lambda [[m k/int-type]] (of-q (q/of-int m))))
+  (theorem! "archimedean"
+    (t/forall [[x R]] (t/exists' k/int-type (t/lambda [[m k/int-type]] (lt x (of-int m)))))
+    (q/lams ["x"] R
+            (fn [xs]
+              (t/quot-ind-all* qconf xs
+                               (fn [& ys] (t/exists' k/int-type (t/lambda [[m k/int-type]] (lt (first ys) (of-int m)))))
+                               (fn [[s]]
+                                 (let [x (t/quot-mk CSeq (c "Equiv") s)
+                                       goal (t/exists' k/int-type (t/lambda [[m k/int-type]] (lt x (of-int m))))
+                                       f (val' s)]
+                                   ;; |s n| < B for all n, and B < m for some integer m
+                                   (with-bound f (cauchy-of s) goal
+                                     (fn [B _hB bs]
+                                       (t/exists-elim k/int-type (t/lambda [[m k/int-type]] (q/lt B (q/of-int m))) goal
+                                                      (t/app (qc "archimedean") B)
+                                                      (t/lambda [[m k/int-type] [hm (q/lt B (q/of-int m))]]
+                                                        (let [cm (q/of-int m)]
+                                                          (t/exists-intro k/int-type
+                                                                          (t/lambda [[m' k/int-type]] (lt x (of-int m'))) m
+                                                                          (pos-intro (val' (cadd (cconst cm) (cneg s)))
+                                                                                     (q/sub cm B) (e/lit-nat 0)
+                                                                                     (t/app (qc "sub_pos_of_lt") B cm hm)
+                                                                                     (t/lambda [[n Nat] [_hn (nat-le (e/lit-nat 0) n)]]
+                                                                                       (t/app (qc "sub_lt_sub_left") (t/app f n) B cm
+                                                                                              (t/app (qc "lt_of_le_of_lt") (t/app f n) (q/abs (t/app f n)) B
+                                                                                                     (t/app (qc "le_abs") (t/app f n))
+                                                                                                     (bs n)))))))))))))))))
+  (r-law! "sub_zero" 1 #(sub % zero) identity #(cadd % (cneg (cconst q/zero))) identity
+          (fn [x n] (t/app (qc "sub_zero") (at x n))))
+  (theorem! "zero_lt_ofQ" (t/forall [[p Q]] (implies (q/lt q/zero p) (lt zero (of-q p))))
+    (t/lambda [[p Q] [h (q/lt q/zero p)]]
+      (t/transport-at R l1 (t/lambda [[z R]] (positive z)) (of-q p) (sub (of-q p) zero)
+                      (t/app (k/const "Eq.symm" l1) R (sub (of-q p) zero) (of-q p)
+                             (t/app (c "sub_zero") (of-q p)))
+                      (t/app (c "positive_ofQ") p h)))))
+
 ;; ## Installation
 
 (defn install!
@@ -1012,5 +1054,6 @@
     (install-order!)
     (install-order-laws!)
     (install-apart!)
-    (install-trichotomy!))
+    (install-trichotomy!)
+    (install-archimedean!))
   :installed)

@@ -128,6 +128,9 @@ keeps a fixed sign past the Cauchy threshold (`pos_or_neg_of_apart`), which
 gives `lt_trichotomy : x < y ∨ x = y ∨ y < x` on `R`, with
 `eq_of_sub_eq_zero`.
 
+`R.ofInt` and `archimedean : ∀ x, ∃ m : Int, x < ofInt m` follow from
+boundedness of Cauchy sequences plus `Q.archimedean`.
+
 Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 `dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative
 order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,

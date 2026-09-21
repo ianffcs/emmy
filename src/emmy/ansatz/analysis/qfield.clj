@@ -835,6 +835,19 @@
       (let [h1 (t/app (c "add_lt_add_right") p zero (neg p) h)
             h2 (rewrite-q #(lt % (add zero (neg p))) (add p (neg p)) zero (t/app (c "add_right_neg") p) h1)]
         (rewrite-q #(lt zero %) (add zero (neg p)) (neg p) (t/app (c "zero_add") (neg p)) h2))))
+  (theorem! "neg_lt_neg"
+    (t/forall [[p Q] [q Q]] (implies (lt p q) (lt (neg q) (neg p))))
+    (t/lambda [[p Q] [q Q] [h (lt p q)]]
+      (t/app (c "lt_of_sub_pos") (neg q) (neg p)
+             (rewrite-q #(lt zero %) (sub q p) (sub (neg p) (neg q))
+                        (t/app (k/const "Eq.symm" l1) Q (sub (neg p) (neg q)) (sub q p)
+                               (t/app (k/const "Eq.trans" l1) Q (sub (neg p) (neg q)) (neg (sub p q)) (sub q p)
+                                      (t/app (c "neg_sub_neg") p q) (t/app (c "neg_sub") p q)))
+                        (t/app (c "sub_pos_of_lt") p q h)))))
+  (theorem! "sub_lt_sub_left"
+    (t/forall [[p Q] [q Q] [s Q]] (implies (lt p q) (lt (sub s q) (sub s p))))
+    (t/lambda [[p Q] [q Q] [s Q] [h (lt p q)]]
+      (t/app (c "add_lt_add_left") (neg q) (neg p) s (t/app (c "neg_lt_neg") p q h))))
   ;; |a − b| < d keeps b above a − d
   (theorem! "sub_lt_of_dist_lt"
     (t/forall [[a Q] [b Q] [d Q]] (implies (lt (abs (sub a b)) d) (lt (sub a d) b)))

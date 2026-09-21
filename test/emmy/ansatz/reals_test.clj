@@ -21,11 +21,13 @@
    "positive_ofQ" "ofQ_lt" "lt_ofQ"
    ;; apartness and trichotomy
    "apart_of_ne" "pos_or_neg_of_apart" "neg_sub" "sub_add_cancel" "eq_of_sub_eq_zero"
-   "lt_trichotomy"])
+   "lt_trichotomy"
+   ;; Archimedean
+   "sub_zero" "archimedean" "zero_lt_ofQ"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"
-   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart"])
+   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart" "ofInt"])
 
 (deftest cauchy-reals
   (is (= :installed (r/install!)))
