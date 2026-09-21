@@ -532,6 +532,177 @@
                         (t/app (c "equiv_of_eq") a b
                                (t/lam "n" Nat (fn [_] (t/app (k/const "Eq.refl" l1) Q (q/neg p)))))))))))
 
+;; ## Order
+;;
+;; `Pos s` says that `s` is eventually bounded below by some positive rational.
+;; It respects `Equiv` (`pos_congr`, by `Q.close_lower` at ε/2), so it lifts to
+;; `Positive : R → Prop`, and `x < y := Positive (y − x)`.
+
+(defn- pos-body [f e N]
+  (t/forall [[n Nat]] (t/arrow (nat-le N n) (q/lt e (t/app f n)))))
+
+(defn- pos-seq
+  "`∃ ε, 0 < ε ∧ ∃ N, ∀ n ≥ N, ε < f n`."
+  [f]
+  (t/exists' Q (t/lambda [[e Q]] (t/and' (pos e) (t/exists' Nat (t/lambda [[N Nat]] (pos-body f e N)))))))
+
+(defn- pos-tail [f e] (t/exists' Nat (t/lambda [[N Nat]] (pos-body f e N))))
+
+(defn- pos-intro
+  "Proof of `pos-seq f` from the witness `ε`, `hp : 0 < ε`, threshold `N` and
+  `hall : ∀ n ≥ N, ε < f n`."
+  [f e N hp hall]
+  (t/exists-intro Q (t/lambda [[e' Q]] (t/and' (pos e') (pos-tail f e'))) e
+                  (t/and-intro (pos e) (pos-tail f e) hp
+                               (t/exists-intro Nat (t/lambda [[M Nat]] (pos-body f e M)) N hall))))
+
+(defn- pos-elim
+  "Proof of `goal` from `h : pos-seq f`, with `k` called on the witness `ε`, a
+  proof of `0 < ε`, the threshold `N` and `hN : ∀ n ≥ N, ε < f n`."
+  [f goal h k]
+  (let [inner (fn [e] (t/and' (pos e) (pos-tail f e)))]
+    (t/exists-elim Q (t/lambda [[e Q]] (inner e)) goal h
+                   (t/lambda [[e Q] [hA (inner e)]]
+                     (t/exists-elim Nat (t/lambda [[N Nat]] (pos-body f e N)) goal
+                                    (t/and-right (pos e) (pos-tail f e) hA)
+                                    (t/lambda [[N Nat] [hN (pos-body f e N)]]
+                                      (k e (t/and-left (pos e) (pos-tail f e) hA) N hN)))))))
+
+(defn positive [x] (t/app (c "Positive") x))
+(defn lt [x y] (t/app (c "lt") x y))
+(defn le [x y] (t/app (c "le") x y))
+
+(defn- install-order! []
+  (define! "Pos" (t/arrow CSeq t/prop) (t/lambda [[s CSeq]] (pos-seq (val' s))))
+  (let [Pos #(t/app (c "Pos") %)]
+    (theorem! "pos_congr"
+      (t/forall [[s CSeq] [u CSeq]] (implies (equiv s u) (Pos s) (Pos u)))
+      (t/lambda [[s CSeq] [u CSeq] [h (equiv s u)] [hp (Pos s)]]
+        (pos-elim (val' s) (Pos u) hp
+                  (fn [e he N1 hN1]
+                    (let [e2 (q/mul q/half e)
+                          he2 (t/app (qc "half_pos_of_pos") e he)
+                          P #(q/lt (dist (at s %) (at u %)) e2)]
+                      (eventually-elim P (Pos u) (t/app h e2 he2)
+                                       (fn [N2 hN2]
+                                         (pos-intro (val' u) e2 (nat-add N1 N2) he2
+                                                    (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                                      (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                        (t/app (qc "close_lower") e (at s n) (at u n)
+                                                               (t/app hN1 n hn1) (t/app hN2 n hn2))))))))))))
+    ;; Pos respects Equiv, so it lifts to R through propext
+    (define! "Positive" (t/arrow R t/prop)
+      (t/lam "x" R
+             (fn [x]
+               (t/app (t/quot-lift-prop CSeq (c "Equiv")
+                                        (t/lambda [[s CSeq]] (Pos s))
+                                        (t/lambda [[s CSeq] [u CSeq] [h (equiv s u)]]
+                                          (t/propext' (Pos s) (Pos u)
+                                                      (t/iff-intro (Pos s) (Pos u)
+                                                                   (t/lam "p" (Pos s) #(t/app (c "pos_congr") s u h %))
+                                                                   (t/lam "p" (Pos u)
+                                                                          #(t/app (c "pos_congr") u s
+                                                                                  (t/app (c "equiv_symm") s u h) %))))))
+                      x))))
+    (define! "lt" (t/arrow R (t/arrow R t/prop)) (t/lambda [[x R] [y R]] (positive (sub y x))))
+    (define! "le" (t/arrow R (t/arrow R t/prop))
+      (t/lambda [[x R] [y R]] (t/or' (lt x y) (k/eq-at R l1 x y))))
+    ;; sums of eventually-positive sequences are eventually positive
+    (theorem! "pos_add"
+      (t/forall [[s CSeq] [u CSeq]] (implies (Pos s) (Pos u) (Pos (t/app (c "cadd") s u))))
+      (t/lambda [[s CSeq] [u CSeq] [hs (Pos s)] [hu (Pos u)]]
+        (let [goal (Pos (t/app (c "cadd") s u))]
+          (pos-elim (val' s) goal hs
+                    (fn [e1 he1 N1 hN1]
+                      (pos-elim (val' u) goal hu
+                                (fn [e2 he2 N2 hN2]
+                                  (pos-intro (val' (t/app (c "cadd") s u)) (q/add e1 e2) (nat-add N1 N2)
+                                             (t/app (qc "add_pos") e1 e2 he1 he2)
+                                             (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                               (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                 (t/app (qc "add_lt_add") e1 (at s n) e2 (at u n)
+                                                        (t/app hN1 n hn1) (t/app hN2 n hn2))))))))))))))
+
+(defn- install-order-laws! []
+    ;; laws on R by induction on representatives
+    (r-law! "sub_add_sub" 3 #(add (sub %1 %2) (sub %2 %3)) #(sub %1 %3)
+            #(cadd (cadd %1 (cneg %2)) (cadd %2 (cneg %3))) #(cadd %1 (cneg %3))
+            (fn [x y z n] (t/app (qc "sub_add_sub") (at x n) (at y n) (at z n))))
+    (r-law! "add_sub_add_left" 3 #(sub (add %1 %2) (add %1 %3)) #(sub %2 %3)
+            #(cadd (cadd %1 %2) (cneg (cadd %1 %3))) #(cadd %2 (cneg %3))
+            (fn [x y z n] (t/app (qc "add_sub_add_left") (at x n) (at y n) (at z n))))
+    (theorem! "ofQ_sub"
+      (t/forall [[p Q] [u Q]] (eq-r (sub (of-q p) (of-q u)) (of-q (q/sub p u))))
+      (t/lambda [[p Q] [u Q]]
+        (let [a (cadd (cconst p) (cneg (cconst u))) b (cconst (q/sub p u))]
+          (t/quot-sound CSeq (c "Equiv") a b
+                        (t/app (c "equiv_of_eq") a b
+                               (t/lam "n" Nat (fn [_] (t/app (k/const "Eq.refl" l1) Q (q/sub p u)))))))))
+    ;; positivity transfers along equalities and adds
+    (theorem! "positive_add"
+      (t/forall [[x R] [y R]] (implies (positive x) (positive y) (positive (add x y))))
+      (q/lams ["x" "y"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (implies (positive (first ys)) (positive (second ys))
+                                                     (positive (add (first ys) (second ys)))))
+                                 (fn [[s u]] (t/app (c "pos_add") s u))))))
+    (theorem! "not_positive_zero" (t/not' (positive zero))
+      (t/lam "h" (positive zero)
+             (fn [h]
+               (pos-elim (val' (cconst q/zero)) t/false-prop h
+                         (fn [e he N hN]
+                           (t/app (qc "lt_irrefl") q/zero
+                                  (t/app (qc "lt_trans") q/zero e q/zero he
+                                         (t/app hN N (t/app (k/const "Nat.le_refl") N)))))))))
+    (theorem! "lt_irrefl" (t/forall [[x R]] (t/not' (lt x x)))
+      (t/lambda [[x R] [h (lt x x)]]
+        (t/app (c "not_positive_zero")
+               (t/transport-at R l1 (t/lambda [[z R]] (positive z)) (sub x x) zero
+                               (t/app (c "sub_self") x) h))))
+    (theorem! "lt_trans"
+      (t/forall [[x R] [y R] [z R]] (implies (lt x y) (lt y z) (lt x z)))
+      (t/lambda [[x R] [y R] [z R] [h1 (lt x y)] [h2 (lt y z)]]
+        (t/transport-at R l1 (t/lambda [[w R]] (positive w)) (add (sub z y) (sub y x)) (sub z x)
+                        (t/app (c "sub_add_sub") z y x)
+                        (t/app (c "positive_add") (sub z y) (sub y x) h2 h1))))
+    (theorem! "add_lt_add_left"
+      (t/forall [[x R] [y R] [z R]] (implies (lt x y) (lt (add z x) (add z y))))
+      (t/lambda [[x R] [y R] [z R] [h (lt x y)]]
+        (t/transport-at R l1 (t/lambda [[w R]] (positive w)) (sub y x) (sub (add z y) (add z x))
+                        (t/app (k/const "Eq.symm" l1) R (sub (add z y) (add z x)) (sub y x)
+                               (t/app (c "add_sub_add_left") z y x))
+                        h)))
+    (theorem! "le_refl" (t/forall [[x R]] (le x x))
+      (t/lambda [[x R]] (t/or-inr (lt x x) (eq-r x x) (t/app (k/const "Eq.refl" l1) R x))))
+    (theorem! "le_of_lt" (t/forall [[x R] [y R]] (implies (lt x y) (le x y)))
+      (t/lambda [[x R] [y R] [h (lt x y)]] (t/or-inl (lt x y) (eq-r x y) h)))
+    ;; ofQ is an order embedding
+    (theorem! "positive_ofQ"
+      (t/forall [[p Q]] (implies (q/lt q/zero p) (positive (of-q p))))
+      (t/lambda [[p Q] [h (q/lt q/zero p)]]
+        (pos-intro (val' (cconst p)) (q/mul q/half p) (e/lit-nat 0)
+                   (t/app (qc "half_pos_of_pos") p h)
+                   (t/lambda [[n Nat] [_hn (nat-le (e/lit-nat 0) n)]]
+                     (t/app (qc "half_lt_self") p h)))))
+    (theorem! "ofQ_lt"
+      (t/forall [[p Q] [u Q]] (implies (q/lt p u) (lt (of-q p) (of-q u))))
+      (t/lambda [[p Q] [u Q] [h (q/lt p u)]]
+        (t/transport-at R l1 (t/lambda [[z R]] (positive z)) (of-q (q/sub u p)) (sub (of-q u) (of-q p))
+                        (t/app (k/const "Eq.symm" l1) R (sub (of-q u) (of-q p)) (of-q (q/sub u p))
+                               (t/app (c "ofQ_sub") u p))
+                        (t/app (c "positive_ofQ") (q/sub u p) (t/app (qc "sub_pos_of_lt") p u h)))))
+    (theorem! "lt_ofQ"
+      (t/forall [[p Q] [u Q]] (implies (lt (of-q p) (of-q u)) (q/lt p u)))
+      (t/lambda [[p Q] [u Q] [h (lt (of-q p) (of-q u))]]
+        (let [hp (t/transport-at R l1 (t/lambda [[z R]] (positive z)) (sub (of-q u) (of-q p)) (of-q (q/sub u p))
+                                 (t/app (c "ofQ_sub") u p) h)]
+          (t/app (qc "lt_of_sub_pos") p u
+                 (pos-elim (val' (cconst (q/sub u p))) (q/lt q/zero (q/sub u p)) hp
+                           (fn [e he N hN]
+                             (t/app (qc "lt_trans") q/zero e (q/sub u p) he
+                                    (t/app hN N (t/app (k/const "Nat.le_refl") N))))))))))
+
 ;; ## Installation
 
 (defn install!
@@ -617,5 +788,7 @@
                           (t/app (c "constSeq") x) (t/app (c "const_cauchy") x)))))
     (install-add-neg!)
     (install-mul!)
-    (install-ring-laws!))
+    (install-ring-laws!)
+    (install-order!)
+    (install-order-laws!))
   :installed)

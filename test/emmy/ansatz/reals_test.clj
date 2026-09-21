@@ -14,11 +14,15 @@
    "add_congr" "neg_congr" "bounded_below" "bounded" "mul_cauchy" "mul_congr"
    ;; ring laws
    "equiv_of_eq" "add_comm" "add_assoc" "zero_add" "add_left_neg" "sub_self" "mul_comm"
-   "mul_assoc" "one_mul" "left_distrib" "ofQ_add" "ofQ_mul" "ofQ_neg"])
+   "mul_assoc" "one_mul" "left_distrib" "ofQ_add" "ofQ_mul" "ofQ_neg"
+   ;; order
+   "pos_congr" "pos_add" "sub_add_sub" "add_sub_add_left" "ofQ_sub" "positive_add"
+   "not_positive_zero" "lt_irrefl" "lt_trans" "add_lt_add_left" "le_refl" "le_of_lt"
+   "positive_ofQ" "ofQ_lt" "lt_ofQ"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"
-   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul"])
+   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le"])
 
 (deftest cauchy-reals
   (is (= :installed (r/install!)))

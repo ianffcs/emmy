@@ -114,6 +114,13 @@ pointwise `Q` law into `Equiv`, and `Quot.sound` gives `add_comm`, `add_assoc`,
 `zero_add`, `add_left_neg`, `sub_self`, `mul_comm`, `mul_assoc`, `one_mul`,
 `left_distrib`; `ofQ` is a ring homomorphism (`ofQ_add`, `ofQ_mul`, `ofQ_neg`).
 
+Order on `R` (M3): `Pos s` says `s` is eventually bounded below by a positive
+rational. It respects `Equiv` (`pos_congr`, by `Q.close_lower`: `ε < a` and
+`|a − b| < ε/2` give `ε/2 < b`), so `propext` lifts it to `Positive : R → Prop`,
+with `x < y := Positive (y − x)` and `x ≤ y := x < y ∨ x = y`. Proved:
+`positive_add`, `not_positive_zero`, `lt_irrefl`, `lt_trans`, `add_lt_add_left`,
+`le_refl`, `le_of_lt`, and the order embedding `ofQ_lt` / `lt_ofQ`.
+
 Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 `dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative
 order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,

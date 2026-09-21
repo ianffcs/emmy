@@ -757,6 +757,69 @@
                                          (t/lambda [[z Q]] (mul z e)) inv1))
                         (q-eq-map (mul one e) e (t/app (c "one_mul") e))))))))
 
+(defn- install-order-extras! []
+  (q-theorem! "le_abs" 1 (fn [[p]] (le p (abs p)))
+    (fn [[a]]
+      (let [na (rnum a) da (rden a)
+            mono [(o/le (k/mul da na) (k/mul da (o/abs na)))
+                  (t/app (k/const "Int.mul_le_mul_of_nonneg_left") na (o/abs na) da
+                         (t/app (k/const "Emmy.Analysis.Int.le_abs") na)
+                         (t/app (k/const "Int.le_of_lt") k/zero da (den-pos a)))]]
+        (o/by-omega (rel-prop o/le (leaf a) (rabs (leaf a))) [mono]))))
+  (theorem! "add_lt_add_right"
+    (t/forall [[p Q] [q Q] [s Q]] (implies (lt p q) (lt (add p s) (add q s))))
+    (t/lambda [[p Q] [q Q] [s Q] [h (lt p q)]]
+      (let [h1 (t/app (c "add_lt_add_left") p q s h)
+            h2 (rewrite-q #(lt % (add s q)) (add s p) (add p s) (t/app (c "add_comm") s p) h1)]
+        (rewrite-q #(lt (add p s) %) (add s q) (add q s) (t/app (c "add_comm") s q) h2))))
+  (let [rhalf {:rep (c "repHalf") :num k/one :den (k/lit 2)}]
+    (quot-law! "sub_half" 1 #(sub % (mul half %)) #(mul half %)
+               #(radd % (rneg (rmul rhalf %))) #(rmul rhalf %)))
+  (theorem! "add_pos"
+    (t/forall [[p Q] [q Q]] (implies (lt zero p) (lt zero q) (lt zero (add p q))))
+    (t/lambda [[p Q] [q Q] [hp (lt zero p)] [hq (lt zero q)]]
+      (t/app (c "lt_trans") zero p (add p q) hp (t/app (c "lt_add_of_pos_right") p q hq))))
+  (quot-law! "add_right_neg" 1 #(add % (neg %)) (constantly zero) #(radd % (rneg %)) (constantly rzero))
+  (quot-law! "sub_add_cancel" 2 #(add (sub %1 %2) %2) (fn [p _] p)
+             #(radd (radd %1 (rneg %2)) %2) (fn [a _] a))
+  (quot-law! "add_sub_add_left" 3 #(sub (add %1 %2) (add %1 %3)) #(sub %2 %3)
+             #(radd (radd %1 %2) (rneg (radd %1 %3))) #(radd %2 (rneg %3)))
+  (theorem! "half_lt_self"
+    (t/forall [[p Q]] (implies (lt zero p) (lt (mul half p) p)))
+    (t/lambda [[p Q] [h (lt zero p)]]
+      (let [hp (mul half p)]
+        (rewrite-q #(lt hp %) (add hp hp) p (t/app (c "half_add_half") p)
+                   (t/app (c "lt_add_of_pos_right") hp hp (t/app (c "half_pos_of_pos") p h))))))
+  (theorem! "lt_of_sub_pos"
+    (t/forall [[p Q] [q Q]] (implies (lt zero (sub q p)) (lt p q)))
+    (t/lambda [[p Q] [q Q] [h (lt zero (sub q p))]]
+      (let [h1 (t/app (c "add_lt_add_right") zero (sub q p) p h)
+            h2 (rewrite-q #(lt % (add (sub q p) p)) (add zero p) p (t/app (c "zero_add") p) h1)]
+        (rewrite-q #(lt p %) (add (sub q p) p) q (t/app (c "sub_add_cancel") q p) h2))))
+  (theorem! "sub_pos_of_lt"
+    (t/forall [[p Q] [q Q]] (implies (lt p q) (lt zero (sub q p))))
+    (t/lambda [[p Q] [q Q] [h (lt p q)]]
+      (rewrite-q #(lt % (sub q p)) (add p (neg p)) zero (t/app (c "add_right_neg") p)
+                 (t/app (c "add_lt_add_right") p q (neg p) h))))
+  ;; ε < a and |a − b| < ε/2 keep b above ε/2
+  (theorem! "close_lower"
+    (t/forall [[e Q] [a Q] [b Q]]
+      (implies (lt e a) (lt (abs (sub a b)) (mul half e)) (lt (mul half e) b)))
+    (t/lambda [[e Q] [a Q] [b Q] [hea (lt e a)] [hab (lt (abs (sub a b)) (mul half e))]]
+      (let [he (mul half e)
+            ;; a − b ≤ |a − b| < ε/2, so a − ε/2 < b
+            h1 (t/app (c "lt_of_le_of_lt") (sub a b) (abs (sub a b)) he
+                      (t/app (c "le_abs") (sub a b)) hab)
+            h2 (t/app (c "add_lt_add_right") (sub a b) he (sub b he) h1)
+            h3 (rewrite-q #(lt % (add he (sub b he))) (add (sub a b) (sub b he)) (sub a he)
+                          (t/app (c "sub_add_sub") a b he) h2)
+            h4 (rewrite-q #(lt (sub a he) %) (add he (sub b he)) b
+                          (t/app (c "add_sub_cancel") b he) h3)
+            ;; ε < a gives ε/2 = ε − ε/2 < a − ε/2
+            h5 (t/app (c "add_lt_add_right") e a (neg he) hea)
+            h6 (rewrite-q #(lt % (sub a he)) (sub e he) he (t/app (c "sub_half") e) h5)]
+        (t/app (c "lt_trans") he (sub a he) b h6 h4)))))
+
 (defn install!
   "Installs ℚ as an ordered commutative ring with absolute value, the
   Archimedean property and halving. Idempotent."
@@ -791,5 +854,6 @@
     (install-archimedean-and-half!)
     (install-field!)
     (install-metric!)
-    (install-mul-order!))
+    (install-mul-order!)
+    (install-order-extras!))
   :installed)

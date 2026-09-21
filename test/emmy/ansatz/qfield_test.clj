@@ -24,7 +24,10 @@
    ;; multiplication and order
    "add_zero" "mul_lt_mul_of_pos_left" "mul_le_mul_of_nonneg_left" "le_add_of_nonneg_right"
    "le_add_of_nonneg_left" "lt_add_of_pos_right" "lt_add_of_pos_left" "abs_le_add_dist"
-   "mul_sub_mul" "dist_mul_le" "mul_lt_of_lt_of_lt" "mul_inv_mul"])
+   "mul_sub_mul" "dist_mul_le" "mul_lt_of_lt_of_lt" "mul_inv_mul"
+   ;; order extras
+   "le_abs" "add_lt_add_right" "sub_half" "add_pos" "add_right_neg" "sub_add_cancel"
+   "add_sub_add_left" "half_lt_self" "lt_of_sub_pos" "sub_pos_of_lt" "close_lower"])
 
 (deftest ordered-field-theorems
   (is (= :installed (q/install!)))
