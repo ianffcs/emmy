@@ -151,6 +151,26 @@ takes `L` to be its class. `Q.small` is positive, decreasing and eventually
 below every positive rational (`small_lt`, from the Nat-indexed Archimedean
 property `archimedean_nat` via `Int.le_natAbs`).
 
+## Limits and continuity (M4)
+
+`TendsToAt f x L := ∀ ε > 0, ∃ δ > 0, ∀ y, 0 < |y − x| → |y − x| < δ →
+|f y − L| < ε` (the punctured ε-δ limit), with `ContinuousAt` in its
+unpunctured form and `Continuous f := ∀ x, ContinuousAt f x`. Proved:
+`tendsto_const`, `tendsto_id`, `tendsto_add`, `tendsto_neg`, `tendsto_mul`
+(through `f y·g y − L·M = (f y − L)·g y + L·(g y − M)`, with `|g y|` bounded by
+`|M| + 1` and tolerances `(|M|+1)⁻¹·(ε/2)`), `tendsto_unique` (two limits would
+put `|L − M|` below itself, using `y = x + δ/2` as a nearby point), and
+`continuousAt_of_tendsto`, `continuous_const`, `continuous_id`.
+
+This rests on an order toolkit for `R`: the bridges `Pos_of_lt_zero` /
+`lt_zero_of_Pos` (absorbing the `− 0` in `0 < x`), `abs_pos_of_ne`,
+`abs_of_pos`, `mul_pos`, `inv_pos` (`1/B` bounds the inverse from below past
+the Cauchy threshold), halving (`half_pos`, `half_lt_self`, `half_add_half`),
+the strict estimates `dist_add_lt`, `abs_add_lt`, `abs_mul_lt`, `abs_lt_add`,
+and `exists_pos_lt_both` standing in for a minimum. Each strict `R` inequality
+is proved pointwise from a `Q` "gap" lemma (`triangle_gap`, `mul_gap`,
+`abs_gap`).
+
 Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 `dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative
 order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,

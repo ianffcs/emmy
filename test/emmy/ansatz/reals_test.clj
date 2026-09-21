@@ -31,11 +31,22 @@
    ;; absolute value and completeness
    "abs_cauchy" "abs_congr_seq" "abs_sub_comm" "sub_add_add" "ofQ_abs" "add_lt_add"
    "dist_triangle_lt" "abs_sub_ofQ_lt" "approx" "add_lt_add_right" "sum3_ofQ"
-   "approx_cauchy" "complete"])
+   "approx_cauchy" "complete"
+   ;; order toolkit
+   "equiv_of_eventually_eq" "lt_zero_of_Pos" "Pos_of_lt_zero" "positive_of_lt_zero"
+   "lt_zero_of_positive" "ne_of_lt" "pos_apart" "abs_pos_of_ne" "abs_of_pos" "mul_pos"
+   "half_pos" "half_add_half" "sub_half" "half_lt_self" "dist_add_lt" "abs_mul_lt"
+   "abs_lt_add" "abs_add_one_pos" "inv_pos" "mul_congr_fst" "mul_congr_snd" "mul_inv_mul"
+   "exists_pos_lt_both"
+   ;; limits and continuity (M4)
+   "zero_lt_one" "abs_sub_self" "dist_neg" "mul_sub_decomp" "add_sub_cancel_left"
+   "abs_lt_abs_add_one" "abs_add_lt" "tendsto_const" "tendsto_id" "tendsto_add"
+   "tendsto_neg" "tendsto_mul" "tendsto_unique" "continuousAt_of_tendsto"
+   "continuous_const" "continuous_id"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"
-   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart" "ofInt" "invSeq" "cinv" "inv" "absSeq" "cabs" "abs" "CauchyR" "TendsTo"])
+   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart" "ofInt" "invSeq" "cinv" "inv" "absSeq" "cabs" "abs" "CauchyR" "TendsTo" "half" "TendsToAt" "ContinuousAt" "Continuous"])
 
 (deftest cauchy-reals
   (is (= :installed (r/install!)))

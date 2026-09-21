@@ -41,7 +41,10 @@
    "small_pos" "small_mono" "small_lt" "add_sub_cancel_left" "add_le_add_right"
    "sub_nonneg_of_le" "le_of_sub_nonneg" "neg_le_neg" "sub_le_sub_left" "abs_le_of_bounds"
    "abs_sub_abs_le" "triangle_gap" "lt_double_sub" "quarter_add_quarter"
-   "quarter_half_quarter"])
+   "quarter_half_quarter"
+   ;; gap lemmas for limits
+   "mul_sub_decomp" "mul_expand" "sub_swap" "lt_sub_of_add_lt" "half_lt_one"
+   "half_lt_abs_add_one" "abs_gap" "mul_gap"])
 
 (def ^:private definitions ["Q" "zero" "one" "add" "mul" "neg" "sub" "lt" "le" "abs"
                             "inv" "ofInt" "ofNat" "half" "small"])

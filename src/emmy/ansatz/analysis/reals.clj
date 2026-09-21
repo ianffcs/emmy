@@ -1580,6 +1580,704 @@
                                                                                                      (t/app (c "lt_trans") (abs (sub (t/app X n) L)) (of-q p) eps
                                                                                                             as-p hpe)))))))))))))))))))
 
+;; ## Order toolkit on ℝ
+;;
+;; `0 < x` unfolds to `Positive (x − 0)`, so the bridges `Pos_of_lt_zero` and
+;; `lt_zero_of_Pos` absorb that shift once and the rest of the file works with
+;; `Pos` on representatives.
+
+(defn- apart-of [s] (t/app (c "Apart") s))
+(defn- inv-inst [s] (t/app (k/const "Classical.propDecidable") (apart-of s)))
+(defn- inv-pos-branch [s]
+  (t/lam "h" (apart-of s)
+         #(make-cseq (t/app (c "invSeq") (val' s))
+                     (t/app (c "inv_cauchy") (val' s) (cauchy-of s) %))))
+(defn- inv-neg-branch [s] (t/lam "h" (t/not' (apart-of s)) (fn [_] (cconst q/zero))))
+(defn- inv-branch-eq [s h]
+  (t/app (k/const "dif_pos" l1) (apart-of s) (inv-inst s) h CSeq
+         (inv-pos-branch s) (inv-neg-branch s)))
+
+(def half (c "half"))
+
+(defn- install-order-toolkit! []
+  (let [mk' #(t/quot-mk CSeq (c "Equiv") %)
+        czero (cconst q/zero)
+        Pos #(t/app (c "Pos") %)
+        symm-r (fn [x y e] (t/app (k/const "Eq.symm" l1) R x y e))
+        step (fn [x y e] {:lhs x :rhs y :type R :level l1 :term e})
+        chain (fn [& maps] (:term (apply k/trans maps)))]
+    (theorem! "equiv_of_eventually_eq"
+      (t/forall [[s CSeq] [u CSeq] [N Nat]]
+        (implies (t/forall [[n Nat]] (t/arrow (nat-le N n) (k/eq-at Q l1 (at s n) (at u n))))
+                 (equiv s u)))
+      (t/lambda [[s CSeq] [u CSeq] [N Nat]
+                 [h (t/forall [[n Nat]] (t/arrow (nat-le N n) (k/eq-at Q l1 (at s n) (at u n))))]
+                 [eps Q] [he (pos eps)]]
+        (eventually-intro #(q/lt (dist (at s %) (at u %)) eps) N
+                          (t/lambda [[n Nat] [hn (nat-le N n)]]
+                            (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt (dist (at s n) z) eps))
+                                            (at s n) (at u n) (t/app h n hn)
+                                            (dist-self-lt (at s n) eps he))))))
+    (theorem! "lt_zero_of_Pos"
+      (t/forall [[s CSeq]] (implies (Pos s) (lt zero (mk' s))))
+      (t/lambda [[s CSeq] [h (Pos s)]]
+        (pos-elim (val' s) (lt zero (mk' s)) h
+                  (fn [e he N hN]
+                    (pos-intro (val' (cadd s (cneg czero))) e N he
+                               (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                 (rewrite-lt-right (at s n) (q/sub (at s n) q/zero) e
+                                                   (t/app (k/const "Eq.symm" l1) Q
+                                                          (q/sub (at s n) q/zero) (at s n)
+                                                          (t/app (qc "sub_zero") (at s n)))
+                                                   (t/app hN n hn))))))))
+    (theorem! "Pos_of_lt_zero"
+      (t/forall [[s CSeq]] (implies (lt zero (mk' s)) (Pos s)))
+      (t/lambda [[s CSeq] [h (lt zero (mk' s))]]
+        (pos-elim (val' (cadd s (cneg czero))) (Pos s) h
+                  (fn [e he N hN]
+                    (pos-intro (val' s) e N he
+                               (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                 (rewrite-lt-right (q/sub (at s n) q/zero) (at s n) e
+                                                   (t/app (qc "sub_zero") (at s n))
+                                                   (t/app hN n hn))))))))
+    (theorem! "positive_of_lt_zero"
+      (t/forall [[x R]] (implies (lt zero x) (positive x)))
+      (q/lams ["x"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (implies (lt zero (first ys)) (positive (first ys))))
+                                 (fn [[a]] (t/app (c "Pos_of_lt_zero") a))))))
+    (theorem! "lt_zero_of_positive"
+      (t/forall [[x R]] (implies (positive x) (lt zero x)))
+      (q/lams ["x"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (implies (positive (first ys)) (lt zero (first ys))))
+                                 (fn [[a]] (t/app (c "lt_zero_of_Pos") a))))))
+    (theorem! "ne_of_lt"
+      (t/forall [[x R] [y R]] (implies (lt x y) (t/not' (eq-r x y))))
+      (t/lambda [[x R] [y R] [h (lt x y)] [e (eq-r x y)]]
+        (t/app (c "lt_irrefl") x
+               (t/transport-at R l1 (t/lambda [[z R]] (lt x z)) y x (symm-r x y e) h))))
+    (theorem! "pos_apart"
+      (t/forall [[s CSeq]] (implies (Pos s) (apart-of s)))
+      (t/lambda [[s CSeq] [h (Pos s)]]
+        (pos-elim (val' s) (apart-of s) h
+                  (fn [e he N hN]
+                    (apart-intro (val' s) e N he
+                                 (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                   (t/app (qc "lt_of_lt_of_le") e (at s n) (q/abs (at s n))
+                                          (t/app hN n hn) (t/app (qc "le_abs") (at s n)))))))))
+    (theorem! "abs_pos_of_ne"
+      (t/forall [[x R] [y R]] (implies (t/not' (eq-r x y)) (lt zero (abs (sub x y)))))
+      (q/lams ["x" "y"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (let [[x y] ys]
+                                              (implies (t/not' (eq-r x y)) (lt zero (abs (sub x y))))))
+                                 (fn [[a b]]
+                                   (let [x (mk' a) y (mk' b) d (cadd a (cneg b))]
+                                     (t/lam "hne" (t/not' (eq-r x y))
+                                            (fn [hne]
+                                              (let [hnq (t/lam "he" (equiv d czero)
+                                                               (fn [he]
+                                                                 (t/app hne
+                                                                        (symm-r y x
+                                                                                (t/app (c "eq_of_sub_eq_zero") y x
+                                                                                       (t/quot-sound CSeq (c "Equiv") d czero he))))))
+                                                    hap (t/app (c "apart_of_ne") d hnq)]
+                                                (t/app (c "lt_zero_of_Pos") (cabs d)
+                                                       (apart-elim (val' d) (Pos (cabs d)) hap
+                                                                   (fn [dd hd N hN]
+                                                                     (pos-intro (val' (cabs d)) dd N hd
+                                                                                (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                                                                  (t/app hN n hn)))))))))))))))
+    (theorem! "abs_of_pos"
+      (t/forall [[x R]] (implies (lt zero x) (eq-r (abs x) x)))
+      (q/lams ["x"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (implies (lt zero (first ys)) (eq-r (abs (first ys)) (first ys))))
+                                 (fn [[a]]
+                                   (t/lam "h" (lt zero (mk' a))
+                                          (fn [h]
+                                            (pos-elim (val' a) (eq-r (abs (mk' a)) (mk' a))
+                                                      (t/app (c "Pos_of_lt_zero") a h)
+                                                      (fn [e he N hN]
+                                                        (t/quot-sound CSeq (c "Equiv") (cabs a) a
+                                                                      (t/app (c "equiv_of_eventually_eq") (cabs a) a N
+                                                                             (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                                                               (t/app (qc "abs_of_pos") (at a n)
+                                                                                      (t/app (qc "lt_trans") q/zero e (at a n)
+                                                                                             he (t/app hN n hn)))))))))))))))
+    (theorem! "mul_pos"
+      (t/forall [[x R] [y R]] (implies (lt zero x) (lt zero y) (lt zero (mul x y))))
+      (q/lams ["x" "y"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (let [[x y] ys] (implies (lt zero x) (lt zero y) (lt zero (mul x y)))))
+                                 (fn [[a b]]
+                                   (t/lam "hx" (lt zero (mk' a))
+                                          (fn [hx]
+                                            (t/lam "hy" (lt zero (mk' b))
+                                                   (fn [hy]
+                                                     (t/app (c "lt_zero_of_Pos") (cmul a b)
+                                                            (pos-elim (val' a) (Pos (cmul a b)) (t/app (c "Pos_of_lt_zero") a hx)
+                                                                      (fn [e1 he1 N1 hN1]
+                                                                        (pos-elim (val' b) (Pos (cmul a b)) (t/app (c "Pos_of_lt_zero") b hy)
+                                                                                  (fn [e2 he2 N2 hN2]
+                                                                                    (pos-intro (val' (cmul a b)) (q/mul e1 e2) (nat-add N1 N2)
+                                                                                               (t/app (qc "mul_pos") e1 e2 he1 he2)
+                                                                                               (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                                                                                 (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                                                   (t/app (qc "mul_lt_of_lt_of_lt") e1 (at a n) e2 (at b n)
+                                                                                                          (t/app (qc "le_of_lt") q/zero e1 he1)
+                                                                                                          (t/app hN1 n hn1)
+                                                                                                          (t/app (qc "le_of_lt") q/zero e2 he2)
+                                                                                                          (t/app hN2 n hn2)))))))))))))))))))
+    ;; halving
+    (define! "half" R (of-q q/half))
+    (theorem! "half_pos"
+      (t/forall [[x R]] (implies (lt zero x) (lt zero (mul half x))))
+      (t/lambda [[x R] [h (lt zero x)]]
+        (t/app (c "mul_pos") half x (t/app (c "zero_lt_ofQ") q/half (qc "half_pos")) h)))
+    (r-law! "half_add_half" 1 #(add (mul half %) (mul half %)) identity
+            #(cadd (cmul (cconst q/half) %) (cmul (cconst q/half) %)) identity
+            (fn [x n] (t/app (qc "half_add_half") (at x n))))
+    (r-law! "sub_half" 1 #(sub % (mul half %)) #(mul half %)
+            #(cadd % (cneg (cmul (cconst q/half) %))) #(cmul (cconst q/half) %)
+            (fn [x n] (t/app (qc "sub_half") (at x n))))
+    (theorem! "half_lt_self"
+      (t/forall [[x R]] (implies (lt zero x) (lt (mul half x) x)))
+      (t/lambda [[x R] [h (lt zero x)]]
+        (t/transport-at R l1 (t/lambda [[z R]] (positive z)) (mul half x) (sub x (mul half x))
+                        (symm-r (sub x (mul half x)) (mul half x) (t/app (c "sub_half") x))
+                        (t/app (c "positive_of_lt_zero") (mul half x) (t/app (c "half_pos") x h)))))
+    ;; strict estimates lifted pointwise
+    (theorem! "dist_add_lt"
+      (t/forall [[a R] [s R] [b R] [u R] [A R] [B R]]
+        (implies (lt (abs (sub a s)) A) (lt (abs (sub b u)) B)
+                 (lt (abs (sub (add a b) (add s u))) (add A B))))
+      (q/lams ["a" "s" "b" "u" "A" "B"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys]
+                                   (let [[a s b u A B] ys]
+                                     (implies (lt (abs (sub a s)) A) (lt (abs (sub b u)) B)
+                                              (lt (abs (sub (add a b) (add s u))) (add A B)))))
+                                 (fn [[sa ss sb su sA sB]]
+                                   (let [d1 (cabs (cadd sa (cneg ss)))
+                                         d2 (cabs (cadd sb (cneg su)))
+                                         d3 (cabs (cadd (cadd sa sb) (cneg (cadd ss su))))
+                                         goal (lt (abs (sub (add (mk' sa) (mk' sb)) (add (mk' ss) (mk' su))))
+                                                  (add (mk' sA) (mk' sB)))]
+                                     (t/lam "h1" (lt (abs (sub (mk' sa) (mk' ss))) (mk' sA))
+                                            (fn [h1]
+                                              (t/lam "h2" (lt (abs (sub (mk' sb) (mk' su))) (mk' sB))
+                                                     (fn [h2]
+                                                       (pos-elim (val' (cadd sA (cneg d1))) goal h1
+                                                                 (fn [e1 he1 N1 hN1]
+                                                                   (pos-elim (val' (cadd sB (cneg d2))) goal h2
+                                                                             (fn [e2 he2 N2 hN2]
+                                                                               (pos-intro (val' (cadd (cadd sA sB) (cneg d3)))
+                                                                                          (q/add e1 e2) (nat-add N1 N2)
+                                                                                          (t/app (qc "add_pos") e1 e2 he1 he2)
+                                                                                          (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                                                                            (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                                              (t/app (qc "triangle_gap") e1 e2
+                                                                                                     (at sA n) (at sB n)
+                                                                                                     (q/abs (q/sub (at sa n) (at ss n)))
+                                                                                                     (q/abs (q/sub (at sb n) (at su n)))
+                                                                                                     (q/abs (q/sub (q/add (at sa n) (at sb n))
+                                                                                                                   (q/add (at ss n) (at su n))))
+                                                                                                     (t/app hN1 n hn1) (t/app hN2 n hn2)
+                                                                                                     (t/app (qc "dist_add_le") (at sa n) (at sb n)
+                                                                                                            (at ss n) (at su n))))))))))))))))))))
+    (theorem! "abs_mul_lt"
+      (t/forall [[u R] [v R] [A R] [B R]]
+        (implies (lt (abs u) A) (lt (abs v) B) (lt (abs (mul u v)) (mul A B))))
+      (q/lams ["u" "v" "A" "B"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys]
+                                   (let [[u v A B] ys]
+                                     (implies (lt (abs u) A) (lt (abs v) B) (lt (abs (mul u v)) (mul A B)))))
+                                 (fn [[su sv sA sB]]
+                                   (let [goal (lt (abs (mul (mk' su) (mk' sv))) (mul (mk' sA) (mk' sB)))]
+                                     (t/lam "h1" (lt (abs (mk' su)) (mk' sA))
+                                            (fn [h1]
+                                              (t/lam "h2" (lt (abs (mk' sv)) (mk' sB))
+                                                     (fn [h2]
+                                                       (pos-elim (val' (cadd sA (cneg (cabs su)))) goal h1
+                                                                 (fn [e1 he1 N1 hN1]
+                                                                   (pos-elim (val' (cadd sB (cneg (cabs sv)))) goal h2
+                                                                             (fn [e2 he2 N2 hN2]
+                                                                               (pos-intro (val' (cadd (cmul sA sB) (cneg (cabs (cmul su sv)))))
+                                                                                          (q/mul e1 e2) (nat-add N1 N2)
+                                                                                          (t/app (qc "mul_pos") e1 e2 he1 he2)
+                                                                                          (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                                                                            (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                                              (t/app (qc "mul_gap") e1 e2 (at sA n) (at sB n)
+                                                                                                     (at su n) (at sv n) he1 he2
+                                                                                                     (t/app hN1 n hn1) (t/app hN2 n hn2)))))))))))))))))))
+    (theorem! "abs_lt_add"
+      (t/forall [[a R] [b R] [E R]]
+        (implies (lt (abs (sub b a)) E) (lt (abs b) (add (abs a) E))))
+      (q/lams ["a" "b" "E"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys]
+                                   (let [[a b E] ys] (implies (lt (abs (sub b a)) E) (lt (abs b) (add (abs a) E)))))
+                                 (fn [[sa sb sE]]
+                                   (let [goal (lt (abs (mk' sb)) (add (abs (mk' sa)) (mk' sE)))]
+                                     (t/lam "h" (lt (abs (sub (mk' sb) (mk' sa))) (mk' sE))
+                                            (fn [h]
+                                              (pos-elim (val' (cadd sE (cneg (cabs (cadd sb (cneg sa)))))) goal h
+                                                        (fn [e he N hN]
+                                                          (pos-intro (val' (cadd (cadd (cabs sa) sE) (cneg (cabs sb)))) e N he
+                                                                     (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                                                       (t/app (qc "abs_gap") e (at sa n) (at sb n) (at sE n)
+                                                                              (t/app hN n hn))))))))))))))
+    (theorem! "abs_add_one_pos"
+      (t/forall [[x R]] (lt zero (add (abs x) one)))
+      (q/lams ["x"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (lt zero (add (abs (first ys)) one)))
+                                 (fn [[a]]
+                                   (pos-intro (val' (cadd (cadd (cabs a) (cconst q/one)) (cneg czero)))
+                                              q/half (e/lit-nat 0) (qc "half_pos")
+                                              (t/lambda [[n Nat] [_hn (nat-le (e/lit-nat 0) n)]]
+                                                (rewrite-lt-right (q/add (q/abs (at a n)) q/one)
+                                                                  (q/sub (q/add (q/abs (at a n)) q/one) q/zero)
+                                                                  q/half
+                                                                  (t/app (k/const "Eq.symm" l1) Q
+                                                                         (q/sub (q/add (q/abs (at a n)) q/one) q/zero)
+                                                                         (q/add (q/abs (at a n)) q/one)
+                                                                         (t/app (qc "sub_zero") (q/add (q/abs (at a n)) q/one)))
+                                                                  (t/app (qc "half_lt_abs_add_one") (at a n))))))))))
+    ;; inverses of positives are positive: 1/B is a lower bound past the threshold
+    (theorem! "inv_pos"
+      (t/forall [[x R]] (implies (lt zero x) (lt zero (inv x))))
+      (q/lams ["x"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (implies (lt zero (first ys)) (lt zero (inv (first ys)))))
+                                 (fn [[a]]
+                                   (t/lam "h" (lt zero (mk' a))
+                                          (fn [h]
+                                            (let [hp (t/app (c "Pos_of_lt_zero") a h)
+                                                  hap (t/app (c "pos_apart") a hp)
+                                                  X (t/app (inv-pos-branch a) hap)
+                                                  _goal (lt zero (mk' (t/app (c "cinv") a)))]
+                                              (t/transport-at CSeq l1 (t/lambda [[z CSeq]] (lt zero (mk' z)))
+                                                              X (t/app (c "cinv") a)
+                                                              (t/app (k/const "Eq.symm" l1) CSeq
+                                                                     (t/app (c "cinv") a) X (inv-branch-eq a hap))
+                                                              (t/app (c "lt_zero_of_Pos") X
+                                                                     (pos-elim (val' a) (Pos X) hp
+                                                                               (fn [e he N hN]
+                                                                                 (with-bound (val' a) (cauchy-of a) (Pos X)
+                                                                                   (fn [B hB bs]
+                                                                                     (pos-intro (val' X) (q/inv B) N
+                                                                                                (t/app (qc "inv_pos") B hB)
+                                                                                                (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                                                                                  (let [an (at a n)
+                                                                                                        h0 (t/app (qc "lt_trans") q/zero e an he (t/app hN n hn))
+                                                                                                        hB' (t/app (qc "lt_of_le_of_lt") an (q/abs an) B
+                                                                                                                   (t/app (qc "le_abs") an) (bs n))]
+                                                                                                    (t/app (qc "inv_lt_inv_of_lt") an B h0 hB'))))))))))))))))))
+    ;; field arithmetic used to build tolerances
+    (doseq [[label arg] [["mul_congr_fst" :fst] ["mul_congr_snd" :snd]]]
+      (theorem! label
+        (t/forall [[a R] [x R] [y R]]
+          (implies (eq-r x y)
+                   (if (= arg :fst) (eq-r (mul x a) (mul y a)) (eq-r (mul a x) (mul a y)))))
+        (t/lambda [[a R] [x R] [y R] [h (eq-r x y)]]
+          (t/app (k/const "congrArg" l1 l1) R R x y
+                 (if (= arg :fst) (t/lambda [[z R]] (mul z a)) (t/lambda [[z R]] (mul a z))) h))))
+    (theorem! "mul_inv_mul"
+      (t/forall [[a R] [e R]] (implies (lt zero a) (eq-r (mul a (mul (inv a) e)) e)))
+      (t/lambda [[a R] [e R] [h (lt zero a)]]
+        (let [ia (inv a)
+              a-ne (t/lam "h0" (eq-r a zero)
+                          #(t/app (c "ne_of_lt") zero a h (symm-r a zero %)))]
+          (chain (step (mul a (mul ia e)) (mul (mul a ia) e)
+                       (symm-r (mul (mul a ia) e) (mul a (mul ia e)) (t/app (c "mul_assoc") a ia e)))
+                 (step (mul (mul a ia) e) (mul one e)
+                       (t/app (c "mul_congr_fst") e (mul a ia) one (t/app (c "mul_inv_cancel") a a-ne)))
+                 (step (mul one e) e (t/app (c "one_mul") e))))))
+    ;; a positive number below two given positives
+    (theorem! "exists_pos_lt_both"
+      (t/forall [[a R] [b R]]
+        (implies (lt zero a) (lt zero b)
+                 (t/exists' R (t/lambda [[cc R]] (t/and' (lt zero cc) (t/and' (lt cc a) (lt cc b)))))))
+      (t/lambda [[a R] [b R] [ha (lt zero a)] [hb (lt zero b)]]
+        (let [body (fn [cc] (t/and' (lt zero cc) (t/and' (lt cc a) (lt cc b))))
+              goal (t/exists' R (t/lambda [[cc R]] (body cc)))
+              pick (fn [w hw hwa hwb]
+                     (t/exists-intro R (t/lambda [[cc R]] (body cc)) w
+                                     (t/and-intro (lt zero w) (t/and' (lt w a) (lt w b)) hw
+                                                  (t/and-intro (lt w a) (lt w b) hwa hwb))))
+              ha2 (t/app (c "half_pos") a ha) hb2 (t/app (c "half_pos") b hb)
+              hsa (t/app (c "half_lt_self") a ha) hsb (t/app (c "half_lt_self") b hb)]
+          (t/or-elim (lt a b) (t/or' (eq-r a b) (lt b a)) goal
+                     (t/app (c "lt_trichotomy") a b)
+                     (t/lam "hab" (lt a b)
+                            (fn [hab]
+                              (pick (mul half a) ha2 hsa
+                                    (t/app (c "lt_trans") (mul half a) a b hsa hab))))
+                     (t/lam "hrest" (t/or' (eq-r a b) (lt b a))
+                            (fn [hrest]
+                              (t/or-elim (eq-r a b) (lt b a) goal hrest
+                                         (t/lam "he" (eq-r a b)
+                                                (fn [he]
+                                                  (pick (mul half a) ha2 hsa
+                                                        (t/transport-at R l1 (t/lambda [[z R]] (lt (mul half a) z)) a b he hsa))))
+                                         (t/lam "hba" (lt b a)
+                                                (fn [hba]
+                                                  (pick (mul half b) hb2
+                                                        (t/app (c "lt_trans") (mul half b) b a hsb hba)
+                                                        hsb))))))))))))
+
+;; ## Limits and continuity (M4)
+;;
+;; `TendsToAt f x L := ∀ ε > 0, ∃ δ > 0, ∀ y, 0 < |y − x| → |y − x| < δ →
+;; |f y − L| < ε`, the punctured ε-δ limit, and `ContinuousAt` in its
+;; unpunctured form.
+
+(def ^:private Fn (t/arrow R R))
+
+(defn tends-to-at [f x L] (t/app (c "TendsToAt") f x L))
+(defn continuous-at [f x] (t/app (c "ContinuousAt") f x))
+(defn continuous [f] (t/app (c "Continuous") f))
+
+(defn- install-limit-lemmas! []
+  (let [symm-r (fn [x y e] (t/app (k/const "Eq.symm" l1) R x y e))]
+    (theorem! "zero_lt_one" (lt zero one)
+      (t/app (c "zero_lt_ofQ") q/one (qc "zero_lt_one")))
+    (r-law! "abs_sub_self" 1 #(abs (sub % %)) (constantly zero)
+            #(cabs (cadd % (cneg %))) (constantly (cconst q/zero))
+            (fn [x n]
+              (t/app (k/const "Eq.trans" l1) Q (q/abs (q/sub (at x n) (at x n))) (q/abs q/zero) q/zero
+                     (t/app (qc "abs_congr") (q/sub (at x n) (at x n)) q/zero
+                            (t/app (qc "sub_self") (at x n)))
+                     (qc "abs_zero"))))
+    (r-law! "dist_neg" 2 #(abs (sub (neg %1) (neg %2))) #(abs (sub %1 %2))
+            #(cabs (cadd (cneg %1) (cneg (cneg %2)))) #(cabs (cadd %1 (cneg %2)))
+            (fn [x y n] (t/app (qc "dist_neg") (at x n) (at y n))))
+    (r-law! "mul_sub_decomp" 4 #(sub (mul %1 %2) (mul %3 %4))
+            #(add (mul (sub %1 %3) %2) (mul %3 (sub %2 %4)))
+            #(cadd (cmul %1 %2) (cneg (cmul %3 %4)))
+            #(cadd (cmul (cadd %1 (cneg %3)) %2) (cmul %3 (cadd %2 (cneg %4))))
+            (fn [x y z w n] (t/app (qc "mul_sub_decomp") (at x n) (at y n) (at z n) (at w n))))
+    (r-law! "add_sub_cancel_left" 2 #(sub (add %1 %2) %1) (fn [_ y] y)
+            #(cadd (cadd %1 %2) (cneg %1)) (fn [_ b] b)
+            (fn [x y n] (t/app (qc "add_sub_cancel_left") (at x n) (at y n))))
+    (theorem! "abs_lt_abs_add_one"
+      (t/forall [[x R]] (lt (abs x) (add (abs x) one)))
+      (t/lambda [[x R]]
+        (t/transport-at R l1 (t/lambda [[z R]] (positive z)) one (sub (add (abs x) one) (abs x))
+                        (symm-r (sub (add (abs x) one) (abs x)) one
+                                (t/app (c "add_sub_cancel_left") (abs x) one))
+                        (t/app (c "positive_of_lt_zero") one (c "zero_lt_one")))))
+    ;; |a + b| < A + B from |a| < A and |b| < B
+    (theorem! "abs_add_lt"
+      (t/forall [[a R] [b R] [A R] [B R]]
+        (implies (lt (abs a) A) (lt (abs b) B) (lt (abs (add a b)) (add A B))))
+      (q/lams ["a" "b" "A" "B"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys]
+                                   (let [[a b A B] ys]
+                                     (implies (lt (abs a) A) (lt (abs b) B) (lt (abs (add a b)) (add A B)))))
+                                 (fn [[sa sb sA sB]]
+                                   (let [mk' #(t/quot-mk CSeq (c "Equiv") %)
+                                         goal (lt (abs (add (mk' sa) (mk' sb))) (add (mk' sA) (mk' sB)))]
+                                     (t/lam "h1" (lt (abs (mk' sa)) (mk' sA))
+                                            (fn [h1]
+                                              (t/lam "h2" (lt (abs (mk' sb)) (mk' sB))
+                                                     (fn [h2]
+                                                       (pos-elim (val' (cadd sA (cneg (cabs sa)))) goal h1
+                                                                 (fn [e1 he1 N1 hN1]
+                                                                   (pos-elim (val' (cadd sB (cneg (cabs sb)))) goal h2
+                                                                             (fn [e2 he2 N2 hN2]
+                                                                               (pos-intro (val' (cadd (cadd sA sB) (cneg (cabs (cadd sa sb)))))
+                                                                                          (q/add e1 e2) (nat-add N1 N2)
+                                                                                          (t/app (qc "add_pos") e1 e2 he1 he2)
+                                                                                          (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                                                                            (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                                              (t/app (qc "triangle_gap") e1 e2 (at sA n) (at sB n)
+                                                                                                     (q/abs (at sa n)) (q/abs (at sb n))
+                                                                                                     (q/abs (q/add (at sa n) (at sb n)))
+                                                                                                     (t/app hN1 n hn1) (t/app hN2 n hn2)
+                                                                                                     (t/app (qc "abs_triangle") (at sa n) (at sb n))))))))))))))))))))))
+
+(defn- install-limits! []
+  (let [symm-r (fn [x y e] (t/app (k/const "Eq.symm" l1) R x y e))
+        ;; ∃ δ, 0 < δ ∧ ∀ y, 0 < |y − x| → |y − x| < δ → |f y − L| < ε
+        near (fn [f x L eps]
+               (t/exists' R (t/lambda [[d R]]
+                              (t/and' (lt zero d)
+                                      (t/forall [[y R]]
+                                        (implies (lt zero (abs (sub y x))) (lt (abs (sub y x)) d)
+                                                 (lt (abs (sub (t/app f y) L)) eps)))))))
+        near-body (fn [f x L eps d]
+                    (t/forall [[y R]]
+                      (implies (lt zero (abs (sub y x))) (lt (abs (sub y x)) d)
+                               (lt (abs (sub (t/app f y) L)) eps))))
+        near-intro (fn [f x L eps d hd hall]
+                     (t/exists-intro R (t/lambda [[d' R]]
+                                         (t/and' (lt zero d') (near-body f x L eps d'))) d
+                                     (t/and-intro (lt zero d) (near-body f x L eps d) hd hall)))
+        near-elim (fn [f x L eps goal h k]
+                    (t/exists-elim R (t/lambda [[d R]] (t/and' (lt zero d) (near-body f x L eps d)))
+                                   goal h
+                                   (t/lambda [[d R] [hd (t/and' (lt zero d) (near-body f x L eps d))]]
+                                     (k d (t/and-left (lt zero d) (near-body f x L eps d) hd)
+                                        (t/and-right (lt zero d) (near-body f x L eps d) hd)))))
+        ;; ∃ δ, 0 < δ ∧ ∀ y, |y − x| < δ → |f y − f x| < ε
+        cont-body (fn [f x eps d]
+                    (t/forall [[y R]]
+                      (implies (lt (abs (sub y x)) d) (lt (abs (sub (t/app f y) (t/app f x))) eps))))
+        cont-near (fn [f x eps]
+                    (t/exists' R (t/lambda [[d R]] (t/and' (lt zero d) (cont-body f x eps d)))))
+        cont-intro (fn [f x eps d hd hall]
+                     (t/exists-intro R (t/lambda [[d' R]] (t/and' (lt zero d') (cont-body f x eps d'))) d
+                                     (t/and-intro (lt zero d) (cont-body f x eps d) hd hall)))
+        pick-min (fn [a b ha hb goal k]
+                   (let [body (fn [cc] (t/and' (lt zero cc) (t/and' (lt cc a) (lt cc b))))]
+                     (t/exists-elim R (t/lambda [[cc R]] (body cc)) goal
+                                    (t/app (c "exists_pos_lt_both") a b ha hb)
+                                    (t/lambda [[cc R] [hc (body cc)]]
+                                      (k cc (t/and-left (lt zero cc) (t/and' (lt cc a) (lt cc b)) hc)
+                                         (t/and-left (lt cc a) (lt cc b)
+                                                     (t/and-right (lt zero cc) (t/and' (lt cc a) (lt cc b)) hc))
+                                         (t/and-right (lt cc a) (lt cc b)
+                                                      (t/and-right (lt zero cc) (t/and' (lt cc a) (lt cc b)) hc)))))))]
+    (define! "TendsToAt" (t/arrow Fn (t/arrow R (t/arrow R t/prop)))
+      (t/lambda [[f Fn] [x R] [L R]]
+        (t/forall [[eps R]] (t/arrow (lt zero eps) (near f x L eps)))))
+    (define! "ContinuousAt" (t/arrow Fn (t/arrow R t/prop))
+      (t/lambda [[f Fn] [x R]]
+        (t/forall [[eps R]] (t/arrow (lt zero eps) (cont-near f x eps)))))
+    (define! "Continuous" (t/arrow Fn t/prop)
+      (t/lambda [[f Fn]] (t/forall [[x R]] (continuous-at f x))))
+    ;; constants and the identity
+    (theorem! "tendsto_const"
+      (t/forall [[cst R] [x R]] (tends-to-at (t/lam "y" R (fn [_] cst)) x cst))
+      (t/lambda [[cst R] [x R] [eps R] [he (lt zero eps)]]
+        (let [f (t/lam "y" R (fn [_] cst))]
+          (near-intro f x cst eps one (c "zero_lt_one")
+                      (t/lambda [[y R] [_h1 (lt zero (abs (sub y x)))] [_h2 (lt (abs (sub y x)) one)]]
+                        (t/transport-at R l1 (t/lambda [[z R]] (lt z eps)) zero (abs (sub cst cst))
+                                        (symm-r (abs (sub cst cst)) zero (t/app (c "abs_sub_self") cst))
+                                        he))))))
+    (theorem! "tendsto_id"
+      (t/forall [[x R]] (tends-to-at (t/lam "y" R identity) x x))
+      (t/lambda [[x R] [eps R] [he (lt zero eps)]]
+        (let [f (t/lam "y" R identity)]
+          (near-intro f x x eps eps he
+                      (t/lambda [[y R] [_h1 (lt zero (abs (sub y x)))] [h2 (lt (abs (sub y x)) eps)]]
+                        h2)))))
+    ;; sums
+    (theorem! "tendsto_add"
+      (t/forall [[f Fn] [g Fn] [x R] [L R] [M R]]
+        (implies (tends-to-at f x L) (tends-to-at g x M)
+                 (tends-to-at (t/lam "y" R #(add (t/app f %) (t/app g %))) x (add L M))))
+      (t/lambda [[f Fn] [g Fn] [x R] [L R] [M R]
+                 [hf (tends-to-at f x L)] [hg (tends-to-at g x M)]
+                 [eps R] [he (lt zero eps)]]
+        (let [h (t/lam "y" R #(add (t/app f %) (t/app g %)))
+              e2 (mul half eps)
+              he2 (t/app (c "half_pos") eps he)
+              goal (near h x (add L M) eps)]
+          (near-elim f x L e2 goal (t/app hf e2 he2)
+                     (fn [d1 hd1 hall1]
+                       (near-elim g x M e2 goal (t/app hg e2 he2)
+                                  (fn [d2 hd2 hall2]
+                                    (pick-min d1 d2 hd1 hd2 goal
+                                              (fn [d hd hda hdb]
+                                                (near-intro h x (add L M) eps d hd
+                                                            (t/lambda [[y R] [hy0 (lt zero (abs (sub y x)))] [hy (lt (abs (sub y x)) d)]]
+                                                              (let [b1 (t/app hall1 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d1 hy hda))
+                                                                    b2 (t/app hall2 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d2 hy hdb))
+                                                                    sum (t/app (c "dist_add_lt") (t/app f y) L (t/app g y) M e2 e2 b1 b2)]
+                                                                (t/transport-at R l1
+                                                                                (t/lambda [[z R]] (lt (abs (sub (add (t/app f y) (t/app g y)) (add L M))) z))
+                                                                                (add e2 e2) eps
+                                                                                (t/app (c "half_add_half") eps)
+                                                                                sum)))))))))))))
+    (theorem! "tendsto_neg"
+      (t/forall [[f Fn] [x R] [L R]]
+        (implies (tends-to-at f x L) (tends-to-at (t/lam "y" R #(neg (t/app f %))) x (neg L))))
+      (t/lambda [[f Fn] [x R] [L R] [hf (tends-to-at f x L)] [eps R] [he (lt zero eps)]]
+        (let [h (t/lam "y" R #(neg (t/app f %)))
+              goal (near h x (neg L) eps)]
+          (near-elim f x L eps goal (t/app hf eps he)
+                     (fn [d hd hall]
+                       (near-intro h x (neg L) eps d hd
+                                   (t/lambda [[y R] [hy0 (lt zero (abs (sub y x)))] [hy (lt (abs (sub y x)) d)]]
+                                     (t/transport-at R l1 (t/lambda [[z R]] (lt z eps))
+                                                     (abs (sub (t/app f y) L))
+                                                     (abs (sub (neg (t/app f y)) (neg L)))
+                                                     (symm-r (abs (sub (neg (t/app f y)) (neg L)))
+                                                             (abs (sub (t/app f y) L))
+                                                             (t/app (c "dist_neg") (t/app f y) L))
+                                                     (t/app hall y hy0 hy)))))))))
+    ;; products: f y·g y − L·M = (f y − L)·g y + L·(g y − M)
+    (theorem! "tendsto_mul"
+      (t/forall [[f Fn] [g Fn] [x R] [L R] [M R]]
+        (implies (tends-to-at f x L) (tends-to-at g x M)
+                 (tends-to-at (t/lam "y" R #(mul (t/app f %) (t/app g %))) x (mul L M))))
+      (t/lambda [[f Fn] [g Fn] [x R] [L R] [M R]
+                 [hf (tends-to-at f x L)] [hg (tends-to-at g x M)]
+                 [eps R] [he (lt zero eps)]]
+        (let [h (t/lam "y" R #(mul (t/app f %) (t/app g %)))
+              goal (near h x (mul L M) eps)
+              A (add (abs M) one) B (add (abs L) one)
+              hA (t/app (c "abs_add_one_pos") M) hB (t/app (c "abs_add_one_pos") L)
+              e2 (mul half eps)
+              he2 (t/app (c "half_pos") eps he)
+              t1 (mul (inv A) e2)
+              t2 (mul (inv B) e2)
+              ht1 (t/app (c "mul_pos") (inv A) e2 (t/app (c "inv_pos") A hA) he2)
+              ht2 (t/app (c "mul_pos") (inv B) e2 (t/app (c "inv_pos") B hB) he2)]
+          (near-elim f x L t1 goal (t/app hf t1 ht1)
+                     (fn [d1 hd1 hall1]
+                       ;; g must stay within min(1, t2) of M
+                       (pick-min one t2 (c "zero_lt_one") ht2 goal
+                                 (fn [cc hc hc1 hct]
+                                   (near-elim g x M cc goal (t/app hg cc hc)
+                                              (fn [d2 hd2 hall2]
+                                                (pick-min d1 d2 hd1 hd2 goal
+                                                          (fn [d hd hda hdb]
+                                                            (near-intro h x (mul L M) eps d hd
+                                                                        (t/lambda [[y R] [hy0 (lt zero (abs (sub y x)))] [hy (lt (abs (sub y x)) d)]]
+                                                                          (let [fy (t/app f y) gy (t/app g y)
+                                                                                b1 (t/app hall1 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d1 hy hda))
+                                                                                b2 (t/app hall2 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d2 hy hdb))
+                                                                                ;; |g y| < |M| + 1
+                                                                                hgy (t/app (c "abs_lt_add") M gy one
+                                                                                           (t/app (c "lt_trans") (abs (sub gy M)) cc one b2 hc1))
+                                                                                ;; |(f y − L)·g y| < t1·A = ε/2
+                                                                                p1 (t/app (c "abs_mul_lt") (sub fy L) gy t1 A b1 hgy)
+                                                                                p1' (t/transport-at R l1
+                                                                                                    (t/lambda [[z R]] (lt (abs (mul (sub fy L) gy)) z))
+                                                                                                    (mul t1 A) e2
+                                                                                                    (t/app (k/const "Eq.trans" l1) R (mul t1 A) (mul A t1) e2
+                                                                                                           (t/app (c "mul_comm") t1 A)
+                                                                                                           (t/app (c "mul_inv_mul") A e2 hA))
+                                                                                                    p1)
+                                                                                ;; |L·(g y − M)| < B·t2 = ε/2
+                                                                                p2 (t/app (c "abs_mul_lt") L (sub gy M) B t2
+                                                                                          (t/app (c "abs_lt_abs_add_one") L)
+                                                                                          (t/app (c "lt_trans") (abs (sub gy M)) cc t2 b2 hct))
+                                                                                p2' (t/transport-at R l1
+                                                                                                    (t/lambda [[z R]] (lt (abs (mul L (sub gy M))) z))
+                                                                                                    (mul B t2) e2
+                                                                                                    (t/app (c "mul_inv_mul") B e2 hB)
+                                                                                                    p2)
+                                                                                sum (t/app (c "abs_add_lt") (mul (sub fy L) gy) (mul L (sub gy M)) e2 e2 p1' p2')
+                                                                                sum' (t/transport-at R l1
+                                                                                                     (t/lambda [[z R]] (lt (abs (add (mul (sub fy L) gy) (mul L (sub gy M)))) z))
+                                                                                                     (add e2 e2) eps
+                                                                                                     (t/app (c "half_add_half") eps)
+                                                                                                     sum)]
+                                                                            (t/transport-at R l1
+                                                                                            (t/lambda [[z R]] (lt (abs z) eps))
+                                                                                            (add (mul (sub fy L) gy) (mul L (sub gy M)))
+                                                                                            (sub (mul fy gy) (mul L M))
+                                                                                            (symm-r (sub (mul fy gy) (mul L M))
+                                                                                                    (add (mul (sub fy L) gy) (mul L (sub gy M)))
+                                                                                                    (t/app (c "mul_sub_decomp") fy gy L M))
+                                                                                            sum')))))))))))))))
+    ;; uniqueness: two limits would be within every ε of each other
+    (theorem! "tendsto_unique"
+      (t/forall [[f Fn] [x R] [L R] [M R]]
+        (implies (tends-to-at f x L) (tends-to-at f x M) (eq-r L M)))
+      (t/lambda [[f Fn] [x R] [L R] [M R] [h1 (tends-to-at f x L)] [h2 (tends-to-at f x M)]]
+        (t/app (k/const "Classical.byCases") (eq-r L M) (eq-r L M)
+               (t/lam "he" (eq-r L M) identity)
+               (t/lam "hne" (t/not' (eq-r L M))
+                      (fn [hne]
+                        (let [D (abs (sub L M))
+                              hD (t/app (c "abs_pos_of_ne") L M hne)
+                              e2 (mul half D)
+                              he2 (t/app (c "half_pos") D hD)
+                              goal (eq-r L M)]
+                          (near-elim f x L e2 goal (t/app h1 e2 he2)
+                                     (fn [d1 hd1 hall1]
+                                       (near-elim f x M e2 goal (t/app h2 e2 he2)
+                                                  (fn [d2 hd2 hall2]
+                                                    (pick-min d1 d2 hd1 hd2 goal
+                                                              (fn [d hd hda hdb]
+                                                                ;; y = x + δ/2 is within δ of x and distinct from it
+                                                                (let [y (add x (mul half d))
+                                                                      hhalf (t/app (c "half_pos") d hd)
+                                                                      ;; |y − x| = δ/2
+                                                                      ydist (t/app (k/const "Eq.trans" l1) R
+                                                                                   (abs (sub y x)) (abs (mul half d)) (mul half d)
+                                                                                   (t/app (k/const "congrArg" l1 l1) R R (sub y x) (mul half d) (c "abs")
+                                                                                          (t/app (c "add_sub_cancel_left") x (mul half d)))
+                                                                                   (t/app (c "abs_of_pos") (mul half d) hhalf))
+                                                                      hy0 (t/transport-at R l1 (t/lambda [[z R]] (lt zero z))
+                                                                                          (mul half d) (abs (sub y x))
+                                                                                          (symm-r (abs (sub y x)) (mul half d) ydist)
+                                                                                          hhalf)
+                                                                      hyd (t/transport-at R l1 (t/lambda [[z R]] (lt z d))
+                                                                                          (mul half d) (abs (sub y x))
+                                                                                          (symm-r (abs (sub y x)) (mul half d) ydist)
+                                                                                          (t/app (c "half_lt_self") d hd))
+                                                                      bL (t/app hall1 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d1 hyd hda))
+                                                                      bM (t/app hall2 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d2 hyd hdb))
+                                                                      ;; |L − M| < D/2 + D/2 = D, contradicting irreflexivity
+                                                                      tri (t/app (c "dist_triangle_lt") L (t/app f y) M e2 e2
+                                                                                 (t/transport-at R l1 (t/lambda [[z R]] (lt z e2))
+                                                                                                 (abs (sub (t/app f y) L)) (abs (sub L (t/app f y)))
+                                                                                                 (t/app (c "abs_sub_comm") (t/app f y) L)
+                                                                                                 bL)
+                                                                                 bM)
+                                                                      tri' (t/transport-at R l1 (t/lambda [[z R]] (lt D z))
+                                                                                           (add e2 e2) D (t/app (c "half_add_half") D)
+                                                                                           tri)]
+                                                                  (t/false-elim goal (t/app (c "lt_irrefl") D tri')))))))))))))))
+    ;; the punctured limit at the value gives (unpunctured) continuity
+    (theorem! "continuousAt_of_tendsto"
+      (t/forall [[f Fn] [x R]]
+        (implies (tends-to-at f x (t/app f x)) (continuous-at f x)))
+      (t/lambda [[f Fn] [x R] [h (tends-to-at f x (t/app f x))] [eps R] [he (lt zero eps)]]
+        (let [fx (t/app f x)
+              goal (cont-near f x eps)]
+          (near-elim f x fx eps goal (t/app h eps he)
+                     (fn [d hd hall]
+                       (cont-intro f x eps d hd
+                                   (t/lambda [[y R] [hy (lt (abs (sub y x)) d)]]
+                                     (t/app (k/const "Classical.byCases") (eq-r y x)
+                                            (lt (abs (sub (t/app f y) fx)) eps)
+                                            ;; y = x: the distance is 0
+                                            (t/lam "hyx" (eq-r y x)
+                                                   (fn [hyx]
+                                                     (t/transport-at R l1
+                                                                     (t/lambda [[z R]] (lt (abs (sub (t/app f z) fx)) eps))
+                                                                     x y (symm-r y x hyx)
+                                                                     (t/transport-at R l1 (t/lambda [[z R]] (lt z eps))
+                                                                                     zero (abs (sub fx fx))
+                                                                                     (symm-r (abs (sub fx fx)) zero
+                                                                                             (t/app (c "abs_sub_self") fx))
+                                                                                     he))))
+                                            (t/lam "hyx" (t/not' (eq-r y x))
+                                                   (fn [hyx]
+                                                     (t/app hall y (t/app (c "abs_pos_of_ne") y x hyx) hy)))))))))))
+    (theorem! "continuous_const"
+      (t/forall [[cst R]] (continuous (t/lam "y" R (fn [_] cst))))
+      (t/lambda [[cst R] [x R]]
+        (t/app (c "continuousAt_of_tendsto") (t/lam "y" R (fn [_] cst)) x
+               (t/app (c "tendsto_const") cst x))))
+    (theorem! "continuous_id" (continuous (t/lam "y" R identity))
+      (t/lambda [[x R]]
+        (t/app (c "continuousAt_of_tendsto") (t/lam "y" R identity) x (t/app (c "tendsto_id") x))))))
+
 ;; ## Installation
 
 (defn install!
@@ -1674,5 +2372,8 @@
     (install-inv!)
     (install-density!)
     (install-abs!)
-    (install-complete!))
+    (install-complete!)
+    (install-order-toolkit!)
+    (install-limit-lemmas!)
+    (install-limits!))
   :installed)

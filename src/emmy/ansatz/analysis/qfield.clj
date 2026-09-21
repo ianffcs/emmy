@@ -1390,6 +1390,98 @@
                  (t/app (c "add_sub_cancel_right") e e)
                  (t/app (c "sub_lt_sub_left") x e (add e e) h)))))
 
+;; ## Gap lemmas for limits
+;;
+;; Strict inequalities on `R` are proved pointwise through gaps of the form
+;; `ε < A − |u|`, so the estimates behind sums and products live here.
+
+(defn- install-limit-gaps! []
+  (quot-law! "mul_sub_decomp" 4 #(sub (mul %1 %2) (mul %3 %4))
+             #(add (mul (sub %1 %3) %2) (mul %3 (sub %2 %4)))
+             #(radd (rmul %1 %2) (rneg (rmul %3 %4)))
+             #(radd (rmul (radd %1 (rneg %3)) %2) (rmul %3 (radd %2 (rneg %4)))))
+  (quot-law! "mul_expand" 4 #(sub (mul %1 %2) (mul (sub %1 %3) (sub %2 %4)))
+             #(sub (add (mul %1 %4) (mul %3 %2)) (mul %3 %4))
+             #(radd (rmul %1 %2) (rneg (rmul (radd %1 (rneg %3)) (radd %2 (rneg %4)))))
+             #(radd (radd (rmul %1 %4) (rmul %3 %2)) (rneg (rmul %3 %4))))
+  (theorem! "sub_swap"
+    (t/forall [[a Q] [b Q] [cq Q]] (implies (lt a (sub b cq)) (lt cq (sub b a))))
+    (t/lambda [[a Q] [b Q] [cq Q] [h (lt a (sub b cq))]]
+      (let [h1 (t/app (c "add_lt_add_right") a (sub b cq) cq h)
+            h2 (rewrite-q #(lt (add a cq) %) (add (sub b cq) cq) b (t/app (c "sub_add_cancel") b cq) h1)
+            h3 (t/app (c "add_lt_add_right") (add a cq) b (neg a) h2)
+            h4 (rewrite-q #(lt % (sub b a)) (sub (add a cq) a) cq
+                          (t/app (c "add_sub_cancel_left") a cq) h3)]
+        h4)))
+  (theorem! "lt_sub_of_add_lt"
+    (t/forall [[a Q] [cq Q] [b Q]] (implies (lt (add a cq) b) (lt a (sub b cq))))
+    (t/lambda [[a Q] [cq Q] [b Q] [h (lt (add a cq) b)]]
+      (let [h1 (t/app (c "add_lt_add_right") (add a cq) b (neg cq) h)]
+        (rewrite-q #(lt % (sub b cq)) (sub (add a cq) cq) a
+                   (t/app (c "add_sub_cancel_right") a cq) h1))))
+  (theorem! "half_lt_one" (lt half one)
+    (o/by-omega (rel-prop o/lt {:rep (c "repHalf") :num k/one :den (k/lit 2)} rone) []))
+  (theorem! "half_lt_abs_add_one"
+    (t/forall [[x Q]] (lt half (add (abs x) one)))
+    (t/lambda [[x Q]]
+      (t/app (c "lt_of_lt_of_le") half one (add (abs x) one) (c "half_lt_one")
+             (t/app (c "le_add_of_nonneg_left") one (abs x) (t/app (c "abs_nonneg") x)))))
+  ;; |b| ≤ |a| + |b − a|, so a gap below E survives adding |a|
+  (theorem! "abs_gap"
+    (t/forall [[e1 Q] [a Q] [b Q] [E Q]]
+      (implies (lt e1 (sub E (abs (sub b a)))) (lt e1 (sub (add (abs a) E) (abs b)))))
+    (t/lambda [[e1 Q] [a Q] [b Q] [E Q] [h (lt e1 (sub E (abs (sub b a))))]]
+      (t/app (c "lt_of_lt_of_le") e1 (sub E (abs (sub b a))) (sub (add (abs a) E) (abs b)) h
+             (rewrite-q #(le % (sub (add (abs a) E) (abs b)))
+                        (sub (add (abs a) E) (add (abs a) (abs (sub b a))))
+                        (sub E (abs (sub b a)))
+                        (t/app (c "add_sub_add_left") (abs a) E (abs (sub b a)))
+                        (t/app (c "sub_le_sub_left") (abs b) (add (abs a) (abs (sub b a))) (add (abs a) E)
+                               (t/app (c "abs_le_add_dist") b a))))))
+  ;; gaps multiply: e1 < A − |u| and e2 < B − |v| give e1·e2 < A·B − |u·v|
+  (theorem! "mul_gap"
+    (t/forall [[e1 Q] [e2 Q] [A Q] [B Q] [u Q] [v Q]]
+      (implies (lt zero e1) (lt zero e2) (lt e1 (sub A (abs u))) (lt e2 (sub B (abs v)))
+               (lt (mul e1 e2) (sub (mul A B) (abs (mul u v))))))
+    (t/lambda [[e1 Q] [e2 Q] [A Q] [B Q] [u Q] [v Q]
+               [he1 (lt zero e1)] [he2 (lt zero e2)]
+               [h1 (lt e1 (sub A (abs u)))] [h2 (lt e2 (sub B (abs v)))]]
+      (let [ua (abs u) va (abs v)
+            hu (t/app (c "sub_swap") e1 A ua h1)          ; |u| < A − e1
+            hv (t/app (c "sub_swap") e2 B va h2)          ; |v| < B − e2
+            ;; A > e1 and B > e2, since |u|, |v| ≥ 0
+            hA (t/app (c "lt_of_lt_of_le") e1 (sub A ua) A h1
+                      (rewrite-q #(le (sub A ua) %) (sub A zero) A (t/app (c "sub_zero") A)
+                                 (t/app (c "sub_le_sub_left") zero ua A (t/app (c "abs_nonneg") u))))
+            hB (t/app (c "lt_of_lt_of_le") e2 (sub B va) B h2
+                      (rewrite-q #(le (sub B va) %) (sub B zero) B (t/app (c "sub_zero") B)
+                                 (t/app (c "sub_le_sub_left") zero va B (t/app (c "abs_nonneg") v))))
+            ;; |u·v| = |u|·|v| < (A − e1)·(B − e2)
+            prod (rewrite-q #(lt % (mul (sub A e1) (sub B e2))) (mul ua va) (abs (mul u v))
+                            (t/app (k/const "Eq.symm" l1) Q (abs (mul u v)) (mul ua va)
+                                   (t/app (c "abs_mul") u v))
+                            (t/app (c "mul_lt_of_lt_of_lt") ua (sub A e1) va (sub B e2)
+                                   (t/app (c "abs_nonneg") u) hu (t/app (c "abs_nonneg") v) hv))
+            ;; e1·e2 < (A·e2 + e1·B) − e1·e2 = A·B − (A − e1)·(B − e2)
+            m1 (rewrite-q #(lt % (mul A e2)) (mul e2 e1) (mul e1 e2) (t/app (c "mul_comm") e2 e1)
+                          (rewrite-q #(lt (mul e2 e1) %) (mul e2 A) (mul A e2) (t/app (c "mul_comm") e2 A)
+                                     (t/app (c "mul_lt_mul_of_pos_left") e1 A e2 hA he2)))
+            m2 (t/app (c "mul_lt_mul_of_pos_left") e2 B e1 hB he1)
+            sum (t/app (c "add_lt_add") (mul e1 e2) (mul A e2) (mul e1 e2) (mul e1 B) m1 m2)
+            gap (t/app (c "lt_sub_of_add_lt") (mul e1 e2) (mul e1 e2) (add (mul A e2) (mul e1 B)) sum)
+            gap' (rewrite-q #(lt (mul e1 e2) %)
+                            (sub (add (mul A e2) (mul e1 B)) (mul e1 e2))
+                            (sub (mul A B) (mul (sub A e1) (sub B e2)))
+                            (t/app (k/const "Eq.symm" l1) Q
+                                   (sub (mul A B) (mul (sub A e1) (sub B e2)))
+                                   (sub (add (mul A e2) (mul e1 B)) (mul e1 e2))
+                                   (t/app (c "mul_expand") A B e1 e2))
+                            gap)]
+        (t/app (c "lt_of_lt_of_le") (mul e1 e2) (sub (mul A B) (mul (sub A e1) (sub B e2)))
+               (sub (mul A B) (abs (mul u v))) gap'
+               (t/app (c "sub_le_sub_left") (abs (mul u v)) (mul (sub A e1) (sub B e2)) (mul A B)
+                      (t/app (c "le_of_lt") (abs (mul u v)) (mul (sub A e1) (sub B e2)) prod)))))))
+
 (defn install!
   "Installs ℚ as an ordered commutative ring with absolute value, the
   Archimedean property and halving. Idempotent."
@@ -1430,5 +1522,6 @@
     (install-inv-estimate!)
     (install-density-lemmas!)
     (install-nat-scale!)
-    (install-le-arith!))
+    (install-le-arith!)
+    (install-limit-gaps!))
   :installed)
