@@ -27,11 +27,15 @@
    ;; inverse
    "apart_congr" "inv_cauchy" "inv_congr" "mul_inv_cancel"
    ;; density
-   "dense"])
+   "dense"
+   ;; absolute value and completeness
+   "abs_cauchy" "abs_congr_seq" "abs_sub_comm" "sub_add_add" "ofQ_abs" "add_lt_add"
+   "dist_triangle_lt" "abs_sub_ofQ_lt" "approx" "add_lt_add_right" "sum3_ofQ"
+   "approx_cauchy" "complete"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"
-   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart" "ofInt" "invSeq" "cinv" "inv"])
+   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart" "ofInt" "invSeq" "cinv" "inv" "absSeq" "cabs" "abs" "CauchyR" "TendsTo"])
 
 (deftest cauchy-reals
   (is (= :installed (r/install!)))

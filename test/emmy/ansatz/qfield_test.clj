@@ -35,11 +35,22 @@
    "sub_congr_fst" "sub_congr_snd" "abs_congr" "inv_mul_cancel" "inv_eq_of_mul_eq_one"
    "inv_zero" "abs_one" "abs_of_neg" "abs_pos_of_ne_zero" "abs_inv" "inv_lt_inv_of_lt"
    "inv_sub_inv" "inv_mul_mul" "ne_zero_of_lt_abs" "abs_inv_lt" "dist_inv_lt"
-   "quarter_gap_left" "quarter_gap_right" "lt_add_of_abs_sub_lt"])
+   "quarter_gap_left" "quarter_gap_right" "lt_add_of_abs_sub_lt"
+   ;; the rational null sequence and le arithmetic
+   "ofInt_le" "ofNat_le" "ofNat_succ_pos" "archimedean_nat" "inv_inv" "inv_le_inv_of_le"
+   "small_pos" "small_mono" "small_lt" "add_sub_cancel_left" "add_le_add_right"
+   "sub_nonneg_of_le" "le_of_sub_nonneg" "neg_le_neg" "sub_le_sub_left" "abs_le_of_bounds"
+   "abs_sub_abs_le" "triangle_gap" "lt_double_sub" "quarter_add_quarter"
+   "quarter_half_quarter"])
+
+(def ^:private definitions ["Q" "zero" "one" "add" "mul" "neg" "sub" "lt" "le" "abs"
+                            "inv" "ofInt" "ofNat" "half" "small"])
 
 (deftest ordered-field-theorems
   (is (= :installed (q/install!)))
   (is (= :installed (q/install!)) "idempotent")
+  (doseq [n definitions]
+    (is (= :def (:kind (t/declaration (str "Emmy.Analysis.Q." n)))) n))
   (doseq [n theorems
           :let [full (str "Emmy.Analysis.Q." n)
                 {:keys [kind statement proof]} (t/declaration full)]]

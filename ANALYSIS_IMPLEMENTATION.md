@@ -39,9 +39,9 @@ carrier has the real field's mathematical properties.
 
 1. ~~Representative equivalence and operation congruence; the rational quotient
    field with order~~ (done, M1).
-2. ~~Cauchy equivalence and well-defined `add`/`neg`/`mul` on the quotient~~
-   (done, M2); ring laws, inverse, order, Archimedean property, density and
-   completeness (M3).
+2. ~~Cauchy equivalence and well-defined arithmetic on the quotient; ring laws,
+   inverse, order, Archimedean property, density and completeness~~ (done,
+   M2/M3: `R` is a complete ordered field).
 3. Real metric/open-set topology, neighborhood limits, continuity of arithmetic.
 4. Epsilon-delta `HasDerivAt`, uniqueness and constant/id/add/neg/mul/chain laws;
    polynomial real semantics, rational cast bridge and derivative correctness.
@@ -140,6 +140,16 @@ respects equivalence (`inv_congr`, with `apart_congr`). This gives `R.inv` and
 `mul_inv_cancel : x ≠ 0 → x · x⁻¹ = 1`, so `R` is a field. New `Q` inverse
 lemmas: `inv_mul_cancel`, `inv_eq_of_mul_eq_one`, `inv_zero`, `abs_inv`,
 `inv_lt_inv_of_lt`, `inv_mul_mul`, `abs_pos_of_ne_zero`, `abs_of_neg`.
+
+Density and completeness (M3, complete): `dense : x < y → ∃ p : Q, x < ofQ p ∧
+ofQ p < y`. `R.abs` is the pointwise absolute value (Cauchy by
+`Q.abs_sub_abs_le`), with `dist_triangle_lt : |x − y| < a → |y − z| < b →
+|x − z| < a + b`. `approx` puts a rational within any positive rational of any
+real, so `Classical.choose` picks `g n` within `small n = (n+1)⁻¹` of `X n`;
+`approx_cauchy` shows `g` is Cauchy and `complete : CauchyR X → ∃ L, TendsTo X L`
+takes `L` to be its class. `Q.small` is positive, decreasing and eventually
+below every positive rational (`small_lt`, from the Nat-indexed Archimedean
+property `archimedean_nat` via `Int.le_natAbs`).
 
 Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 `dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative

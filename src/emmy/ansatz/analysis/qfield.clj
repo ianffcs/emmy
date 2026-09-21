@@ -26,6 +26,7 @@
             [emmy.ansatz.core :as k]))
 
 (def ^:private l1 (level/succ level/zero))
+(def ^:private l0 level/zero)
 (def ^:private prefix "Emmy.Analysis.Q.")
 (defn- c [s] (k/const (str prefix s)))
 (defn- r [s] (k/const (str "Emmy.Analysis.Rational." s)))
@@ -1113,6 +1114,13 @@
                #(sub (add (sub %1 (quarter %2)) %2) (add %1 (mul half %2))) #(quarter %2)
                #(radd (radd (radd %1 (rneg (rquarter %2))) %2) (rneg (radd %1 (rmul rhalf %2))))
                #(rquarter %2)))
+  (let [rhalf {:rep (c "repHalf") :num k/one :den (k/lit 2)}
+        quarter #(mul half (mul half %))
+        rquarter #(rmul rhalf (rmul rhalf %))]
+    (quot-law! "quarter_add_quarter" 1 #(add (quarter %) (quarter %)) #(mul half %)
+               #(radd (rquarter %) (rquarter %)) #(rmul rhalf %))
+    (quot-law! "quarter_half_quarter" 1 #(add (add (quarter %) (mul half %)) (quarter %)) identity
+               #(radd (radd (rquarter %) (rmul rhalf %)) (rquarter %)) identity))
   (theorem! "lt_add_of_abs_sub_lt"
     (t/forall [[a Q] [b Q] [d Q]] (implies (lt (abs (sub a b)) d) (lt a (add b d))))
     (t/lambda [[a Q] [b Q] [d Q] [h (lt (abs (sub a b)) d)]]
@@ -1163,6 +1171,225 @@
                      (symm-q (abs (sub ia ib)) (mul aa (mul ab ba)) eq1)
                      h3'))))))
 
+;; ## A rational null sequence and `le` arithmetic
+;;
+;; `small n := (n+1)⁻¹` is positive, decreasing, and eventually below every
+;; positive rational (`small_lt`, from the Nat-indexed Archimedean property).
+
+(def Nat' (k/const "Nat"))
+(defn- nat-succ [n] (t/app (k/const "Nat.succ") n))
+(defn- nat-cast [n] (t/app (k/const "Nat.cast" l0) k/int-type (k/const "instNatCastInt") n))
+(defn of-nat [n] (t/app (c "ofNat") n))
+(defn small [n] (t/app (c "small") n))
+
+(defn- int-leaf
+  "Representative leaf of `ofInt m`."
+  [m]
+  {:rep (rat/make-rep m k/one (t/app (k/const "Int.ofNat_succ_pos") (ansatz.kernel.expr/lit-nat 0)))
+   :num m :den k/one})
+
+(defn- install-nat-scale! []
+  (define! "ofNat" (t/arrow Nat' Q) (t/lambda [[n Nat']] (of-int (nat-cast n))))
+  (theorem! "ofInt_le"
+    (t/forall [[m k/int-type] [n k/int-type]] (implies (o/le m n) (le (of-int m) (of-int n))))
+    (t/lambda [[m k/int-type] [n k/int-type] [h (o/le m n)]]
+      (o/by-omega (rel-prop o/le (int-leaf m) (int-leaf n)) [[(o/le m n) h]])))
+  (theorem! "ofNat_le"
+    (t/forall [[m Nat'] [n Nat']] (implies (t/app (k/const "LE.le" l0) Nat' (k/const "instLENat") m n)
+                                           (le (of-nat m) (of-nat n))))
+    (t/lambda [[m Nat'] [n Nat'] [h (t/app (k/const "LE.le" l0) Nat' (k/const "instLENat") m n)]]
+      (t/app (c "ofInt_le") (nat-cast m) (nat-cast n)
+             (t/app (k/const "Iff.mpr") (o/le (nat-cast m) (nat-cast n))
+                    (t/app (k/const "LE.le" l0) Nat' (k/const "instLENat") m n)
+                    (t/app (k/const "Int.ofNat_le") m n) h))))
+  (theorem! "ofNat_succ_pos"
+    (t/forall [[n Nat']] (lt zero (of-nat (nat-succ n))))
+    (t/lambda [[n Nat']]
+      (o/by-omega (rel-prop o/lt rzero (int-leaf (nat-cast (nat-succ n))))
+                  [[(o/lt k/zero (nat-cast (nat-succ n))) (t/app (k/const "Int.ofNat_succ_pos") n)]])))
+  (theorem! "archimedean_nat"
+    (t/forall [[p Q]] (t/exists' Nat' (t/lambda [[n Nat']] (lt p (of-nat n)))))
+    (t/lambda [[p Q]]
+      (let [goal (t/exists' Nat' (t/lambda [[n Nat']] (lt p (of-nat n))))]
+        (t/exists-elim k/int-type (t/lambda [[m k/int-type]] (lt p (of-int m))) goal
+                       (t/app (c "archimedean") p)
+                       (t/lambda [[m k/int-type] [hm (lt p (of-int m))]]
+                         (let [na (t/app (k/const "Int.natAbs") m)]
+                           (t/exists-intro Nat' (t/lambda [[n Nat']] (lt p (of-nat n))) na
+                                           (t/app (c "lt_of_lt_of_le") p (of-int m) (of-nat na) hm
+                                                  (t/app (c "ofInt_le") m (nat-cast na)
+                                                         (t/app (k/const "Int.le_natAbs") m))))))))))
+  (theorem! "inv_inv"
+    (t/forall [[p Q]] (implies (lt zero p) (eq-q (inv (inv p)) p)))
+    (t/lambda [[p Q] [h (lt zero p)]]
+      (let [ip (inv p)
+            symm-q (fn [x y e] (t/app (k/const "Eq.symm" l1) Q x y e))
+            p-ne (t/lam "h0" (eq-q p zero) #(t/app (c "ne_of_lt") zero p h (symm-q p zero %)))
+            ip-ne (t/lam "h0" (eq-q ip zero)
+                         #(t/app (c "ne_of_lt") zero ip (t/app (c "inv_pos") p h) (symm-q ip zero %)))]
+        (t/app (c "inv_eq_of_mul_eq_one") ip p ip-ne (t/app (c "inv_mul_cancel") p p-ne)))))
+  (theorem! "inv_le_inv_of_le"
+    (t/forall [[p Q] [q Q]] (implies (lt zero p) (le p q) (le (inv q) (inv p))))
+    (t/lambda [[p Q] [q Q] [hp (lt zero p)] [h (le p q)]]
+      (let [ip (inv p) iq (inv q)
+            symm-q (fn [x y e] (t/app (k/const "Eq.symm" l1) Q x y e))
+            step q-eq-map
+            chain (fn [& maps] (:term (apply k/trans maps)))
+            hq (t/app (c "lt_of_lt_of_le") zero p q hp h)
+            hip (t/app (c "inv_pos") p hp) hiq (t/app (c "inv_pos") q hq)
+            kk (mul ip iq)
+            hk (t/app (c "mul_pos") ip iq hip hiq)
+            p-ne (t/lam "h0" (eq-q p zero) #(t/app (c "ne_of_lt") zero p hp (symm-q p zero %)))
+            q-ne (t/lam "h0" (eq-q q zero) #(t/app (c "ne_of_lt") zero q hq (symm-q q zero %)))
+            kp (chain (step (mul kk p) (mul (mul iq ip) p)
+                            (t/app (c "mul_congr_fst") p kk (mul iq ip) (t/app (c "mul_comm") ip iq)))
+                      (step (mul (mul iq ip) p) (mul iq (mul ip p)) (t/app (c "mul_assoc") iq ip p))
+                      (step (mul iq (mul ip p)) (mul iq one)
+                            (t/app (c "mul_congr_snd") iq (mul ip p) one (t/app (c "inv_mul_cancel") p p-ne)))
+                      (step (mul iq one) iq (t/app (c "mul_one") iq)))
+            kq (chain (step (mul kk q) (mul ip (mul iq q)) (t/app (c "mul_assoc") ip iq q))
+                      (step (mul ip (mul iq q)) (mul ip one)
+                            (t/app (c "mul_congr_snd") ip (mul iq q) one (t/app (c "inv_mul_cancel") q q-ne)))
+                      (step (mul ip one) ip (t/app (c "mul_one") ip)))
+            scaled (t/app (c "mul_le_mul_of_nonneg_left") p q kk h (t/app (c "le_of_lt") zero kk hk))]
+        (rewrite-q #(le % ip) (mul kk p) iq kp
+                   (rewrite-q #(le (mul kk p) %) (mul kk q) ip kq scaled)))))
+  (define! "small" (t/arrow Nat' Q) (t/lambda [[n Nat']] (inv (of-nat (nat-succ n)))))
+  (theorem! "small_pos" (t/forall [[n Nat']] (lt zero (small n)))
+    (t/lambda [[n Nat']] (t/app (c "inv_pos") (of-nat (nat-succ n)) (t/app (c "ofNat_succ_pos") n))))
+  (theorem! "small_mono"
+    (t/forall [[m Nat'] [n Nat']]
+      (implies (t/app (k/const "LE.le" l0) Nat' (k/const "instLENat") m n) (le (small n) (small m))))
+    (t/lambda [[m Nat'] [n Nat'] [h (t/app (k/const "LE.le" l0) Nat' (k/const "instLENat") m n)]]
+      (t/app (c "inv_le_inv_of_le") (of-nat (nat-succ m)) (of-nat (nat-succ n))
+             (t/app (c "ofNat_succ_pos") m)
+             (t/app (c "ofNat_le") (nat-succ m) (nat-succ n)
+                    (t/app (k/const "Nat.succ_le_succ") m n h)))))
+  (theorem! "small_lt"
+    (t/forall [[e Q]] (implies (lt zero e) (t/exists' Nat' (t/lambda [[n Nat']] (lt (small n) e)))))
+    (t/lambda [[e Q] [he (lt zero e)]]
+      (let [goal (t/exists' Nat' (t/lambda [[n Nat']] (lt (small n) e)))
+            ie (inv e)
+            hie (t/app (c "inv_pos") e he)]
+        (t/exists-elim Nat' (t/lambda [[n Nat']] (lt ie (of-nat n))) goal
+                       (t/app (c "archimedean_nat") ie)
+                       (t/lambda [[n Nat'] [hn (lt ie (of-nat n))]]
+                         (t/exists-intro Nat' (t/lambda [[k Nat']] (lt (small k) e)) n
+                                         (rewrite-q #(lt (small n) %) (inv ie) e (t/app (c "inv_inv") e he)
+                                                    (t/app (c "inv_lt_inv_of_lt") ie (of-nat (nat-succ n)) hie
+                                                           (t/app (c "lt_of_lt_of_le") ie (of-nat n) (of-nat (nat-succ n)) hn
+                                                                  (t/app (c "ofNat_le") n (nat-succ n)
+                                                                         (t/app (k/const "Nat.le_succ") n))))))))))))
+
+;; ## `le` arithmetic and the reverse triangle inequality
+
+(defn- install-le-arith! []
+  (quot-law! "add_sub_cancel_left" 2 #(sub (add %1 %2) %1) (fn [_ q] q)
+             #(radd (radd %1 %2) (rneg %1)) (fn [_ b] b))
+  (theorem! "add_le_add_right"
+    (t/forall [[p Q] [q Q] [s Q]] (implies (le p q) (le (add p s) (add q s))))
+    (t/lambda [[p Q] [q Q] [s Q] [h (le p q)]]
+      (let [h1 (t/app (c "add_le_add_left") p q s h)
+            h2 (rewrite-q #(le % (add s q)) (add s p) (add p s) (t/app (c "add_comm") s p) h1)]
+        (rewrite-q #(le (add p s) %) (add s q) (add q s) (t/app (c "add_comm") s q) h2))))
+  (theorem! "sub_nonneg_of_le"
+    (t/forall [[p Q] [q Q]] (implies (le p q) (le zero (sub q p))))
+    (t/lambda [[p Q] [q Q] [h (le p q)]]
+      (rewrite-q #(le % (sub q p)) (add p (neg p)) zero (t/app (c "add_right_neg") p)
+                 (t/app (c "add_le_add_right") p q (neg p) h))))
+  (theorem! "le_of_sub_nonneg"
+    (t/forall [[p Q] [q Q]] (implies (le zero (sub q p)) (le p q)))
+    (t/lambda [[p Q] [q Q] [h (le zero (sub q p))]]
+      (let [h1 (t/app (c "add_le_add_right") zero (sub q p) p h)
+            h2 (rewrite-q #(le % (add (sub q p) p)) (add zero p) p (t/app (c "zero_add") p) h1)]
+        (rewrite-q #(le p %) (add (sub q p) p) q (t/app (c "sub_add_cancel") q p) h2))))
+  (theorem! "neg_le_neg"
+    (t/forall [[p Q] [q Q]] (implies (le p q) (le (neg q) (neg p))))
+    (t/lambda [[p Q] [q Q] [h (le p q)]]
+      (t/app (c "le_of_sub_nonneg") (neg q) (neg p)
+             (rewrite-q #(le zero %) (sub q p) (sub (neg p) (neg q))
+                        (t/app (k/const "Eq.symm" l1) Q (sub (neg p) (neg q)) (sub q p)
+                               (t/app (k/const "Eq.trans" l1) Q (sub (neg p) (neg q)) (neg (sub p q)) (sub q p)
+                                      (t/app (c "neg_sub_neg") p q) (t/app (c "neg_sub") p q)))
+                        (t/app (c "sub_nonneg_of_le") p q h)))))
+  (theorem! "sub_le_sub_left"
+    (t/forall [[p Q] [q Q] [s Q]] (implies (le p q) (le (sub s q) (sub s p))))
+    (t/lambda [[p Q] [q Q] [s Q] [h (le p q)]]
+      (t/app (c "add_le_add_left") (neg q) (neg p) s (t/app (c "neg_le_neg") p q h))))
+  (theorem! "abs_le_of_bounds"
+    (t/forall [[x Q] [d Q]] (implies (le x d) (le (neg x) d) (le (abs x) d)))
+    (t/lambda [[x Q] [d Q] [h1 (le x d)] [h2 (le (neg x) d)]]
+      (let [goal (le (abs x) d)
+            E (eq-q x zero)]
+        (t/or-elim (lt x zero) (t/or' E (lt zero x)) goal
+                   (t/app (c "lt_trichotomy") x zero)
+                   (t/lam "hneg" (lt x zero)
+                          (fn [hneg] (rewrite-q #(le % d) (neg x) (abs x)
+                                                (t/app (k/const "Eq.symm" l1) Q (abs x) (neg x)
+                                                       (t/app (c "abs_of_neg") x hneg))
+                                                h2)))
+                   (t/lam "hrest" (t/or' E (lt zero x))
+                          (fn [hrest]
+                            (t/or-elim E (lt zero x) goal hrest
+                                       (t/lam "he" E
+                                              (fn [he]
+                                                ;; x = 0: |x| = 0 ≤ d
+                                                (rewrite-q #(le % d) x (abs x)
+                                                           (t/app (k/const "Eq.symm" l1) Q (abs x) x
+                                                                  (t/app (k/const "Eq.trans" l1) Q (abs x) (abs zero) x
+                                                                         (t/app (c "abs_congr") x zero he)
+                                                                         (t/app (k/const "Eq.trans" l1) Q (abs zero) zero x
+                                                                                (c "abs_zero")
+                                                                                (t/app (k/const "Eq.symm" l1) Q x zero he))))
+                                                           h1)))
+                                       (t/lam "hpos" (lt zero x)
+                                              (fn [hpos]
+                                                (rewrite-q #(le % d) x (abs x)
+                                                           (t/app (k/const "Eq.symm" l1) Q (abs x) x
+                                                                  (t/app (c "abs_of_pos") x hpos))
+                                                           h1))))))))))
+  ;; | |a| − |b| | ≤ |a − b|
+  (theorem! "abs_sub_abs_le"
+    (t/forall [[a Q] [b Q]] (le (abs (sub (abs a) (abs b))) (abs (sub a b))))
+    (t/lambda [[a Q] [b Q]]
+      (let [symm-q (fn [x y e] (t/app (k/const "Eq.symm" l1) Q x y e))
+            ;; |u| − |v| ≤ |u − v|, from |u| ≤ |v| + |u − v|
+            gap (fn [u v]
+                  (rewrite-q #(le (sub (abs u) (abs v)) %)
+                             (sub (add (abs v) (abs (sub u v))) (abs v)) (abs (sub u v))
+                             (t/app (c "add_sub_cancel_left") (abs v) (abs (sub u v)))
+                             (t/app (c "add_le_add_right") (abs u) (add (abs v) (abs (sub u v))) (neg (abs v))
+                                    (t/app (c "abs_le_add_dist") u v))))]
+        (t/app (c "abs_le_of_bounds") (sub (abs a) (abs b)) (abs (sub a b))
+               (gap a b)
+               ;; −(|a| − |b|) = |b| − |a| ≤ |b − a| = |a − b|
+               (rewrite-q #(le % (abs (sub a b))) (sub (abs b) (abs a)) (neg (sub (abs a) (abs b)))
+                          (symm-q (neg (sub (abs a) (abs b))) (sub (abs b) (abs a))
+                                  (t/app (c "neg_sub") (abs a) (abs b)))
+                          (rewrite-q #(le (sub (abs b) (abs a)) %) (abs (sub b a)) (abs (sub a b))
+                                     (t/app (c "abs_sub_comm") b a)
+                                     (gap b a)))))))
+  ;; the gap arithmetic behind the triangle inequality on R
+  (theorem! "triangle_gap"
+    (t/forall [[e1 Q] [e2 Q] [A Q] [B Q] [x Q] [y Q] [r Q]]
+      (implies (lt e1 (sub A x)) (lt e2 (sub B y)) (le r (add x y))
+               (lt (add e1 e2) (sub (add A B) r))))
+    (t/lambda [[e1 Q] [e2 Q] [A Q] [B Q] [x Q] [y Q] [r Q]
+               [h1 (lt e1 (sub A x))] [h2 (lt e2 (sub B y))] [h3 (le r (add x y))]]
+      (let [h (t/app (c "add_lt_add") e1 (sub A x) e2 (sub B y) h1 h2)
+            h' (rewrite-q #(lt (add e1 e2) %) (add (sub A x) (sub B y)) (sub (add A B) (add x y))
+                          (t/app (k/const "Eq.symm" l1) Q (sub (add A B) (add x y)) (add (sub A x) (sub B y))
+                                 (t/app (c "sub_add_add") A B x y))
+                          h)]
+        (t/app (c "lt_of_lt_of_le") (add e1 e2) (sub (add A B) (add x y)) (sub (add A B) r) h'
+               (t/app (c "sub_le_sub_left") r (add x y) (add A B) h3)))))
+  (theorem! "lt_double_sub"
+    (t/forall [[x Q] [e Q]] (implies (lt x e) (lt e (sub (add e e) x))))
+    (t/lambda [[x Q] [e Q] [h (lt x e)]]
+      (rewrite-q #(lt % (sub (add e e) x)) (sub (add e e) e) e
+                 (t/app (c "add_sub_cancel_right") e e)
+                 (t/app (c "sub_lt_sub_left") x e (add e e) h)))))
+
 (defn install!
   "Installs ℚ as an ordered commutative ring with absolute value, the
   Archimedean property and halving. Idempotent."
@@ -1201,5 +1428,7 @@
     (install-order-extras!)
     (install-inv-laws!)
     (install-inv-estimate!)
-    (install-density-lemmas!))
+    (install-density-lemmas!)
+    (install-nat-scale!)
+    (install-le-arith!))
   :installed)
