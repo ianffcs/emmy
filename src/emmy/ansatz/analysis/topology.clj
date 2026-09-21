@@ -4,17 +4,18 @@
   "Open-set topology in the Ansatz kernel, independent of Mathlib.
   Spaces have empty/universal opens and closure under binary intersections and
   arbitrary unions. Continuity is preservation of opens under inverse image.
-  This layer does not yet equip a constructed real field with a topology."
-  (:require [ansatz.kernel.level :as level]
+  The real instance is installed by `analysis.real-topology`."
+  (:require [ansatz.kernel.expr :as e]
+            [ansatz.kernel.level :as level]
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.core :as k]))
 
 (def ^:private u (level/succ level/zero))
 (def ^:private prefix "Emmy.Analysis.Topology.")
 (defn- c [s] (k/const (str prefix s)))
-(defn- space [a] (t/app (c "Space") a))
-(defn- opens [a s] (t/app (c "IsOpen") a s))
-(defn- continuous [a b sa sb f]
+(defn space "The type of topologies on `a`." [a] (t/app (c "Space") a))
+(defn opens "The open-set predicate of a space." [a s] (t/app (c "IsOpen") a s))
+(defn continuous "Continuity by open inverse images." [a b sa sb f]
   (t/app (c "Continuous") a b sa sb f))
 
 (defn- laws [a o]
@@ -45,6 +46,21 @@
 
 (defn- space-predicate [a]
   (t/lam "opens" (t/predicate (t/predicate a)) #(laws a %)))
+
+(defn space-intro
+  "Constructs a space from an open predicate and proofs of the four axioms.
+  Arguments: empty open, universal open, binary intersections, arbitrary unions."
+  [a o empty-open full-open intersections unions]
+  (let [axioms (laws a o)
+        ;; Build the nested conjunction using its explicit argument types.
+        parts (fn [p] (second (e/get-app-fn-args p)))
+        [p rest1] (parts axioms)
+        [q rest2] (parts rest1)
+        [r s] (parts rest2)]
+    (t/app (k/const "Subtype.mk" u) (t/predicate (t/predicate a)) (space-predicate a) o
+           (t/and-intro p rest1 empty-open
+                        (t/and-intro q rest2 full-open
+                                     (t/and-intro r s intersections unions))))))
 
 (defn install!
   "Installs the space and continuity definitions and checked identity and

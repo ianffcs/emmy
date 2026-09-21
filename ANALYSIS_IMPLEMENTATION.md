@@ -1,8 +1,9 @@
 # Independent analysis in Emmy / Ansatz
 
 This work uses Ansatz 0.2.114's bundled Init, not the Mathlib store.
-It is **not yet a complete real analysis library**. Constructed real field
-operations, completeness and analytic derivatives remain required deliverables.
+It is **not yet a complete real analysis library**. The constructed real field,
+completeness, limits, and epsilon-ball topology are implemented. Analytic
+derivatives remain the next milestone (M5).
 
 ## Implemented and checked
 
@@ -15,14 +16,15 @@ operations, completeness and analytic derivatives remain required deliverables.
   `Equiv a b := num a * den b = num b * den a` with `equiv_refl`, `equiv_symm`,
   `equiv_trans`; and `add_congr`, `mul_congr`, `neg_congr`. Transitivity uses
   `int_mul_right_cancel` (`0 < d → a*d = b*d → a = b`), derived from Init's
-  `Int.mul_ediv_cancel`. Normalization and the rational quotient field are not
-  yet proved.
+  `Int.mul_ediv_cancel`. The rational quotient field is implemented separately
+  by `analysis.qfield` (M1).
 - `algebra/linear-combination`: proves `lhs = rhs` from equational hypotheses
   (`lhs - rhs = Σ cᵢ·(lᵢ - rᵢ)` by `int_ring`), as Lean's `linear_combination`.
 - `analysis.topology`: open-set spaces (empty/universal sets, finite binary
   intersections, arbitrary unions), inverse-image continuity, and checked
   continuity proofs for identity and composition.
-- `analysis.real`: integer/natural rational representatives `n/(d+1)`, exact
+- `analysis.real` (provisional, superseded by `analysis.reals`): integer/natural
+  rational representatives `n/(d+1)`, exact
   rational distance bounds, proof-carrying Cauchy sequences, convergence-to-zero
   relation, and their quotient carrier. Checked `within_self`, `constant_cauchy`
   and quotient `sound` theorems. Constant rational sequences map into the carrier;
@@ -31,9 +33,10 @@ operations, completeness and analytic derivatives remain required deliverables.
 All new kernel declarations are definitions or theorems, checked with
 `env/check-constant`. The bundled Init environment is still loaded in Ansatz's
 trust mode. It supplies the underlying integers, quotient primitives and logic;
-this work does not claim to have rechecked that imported library or completed
-a transitive axiom audit. Quotient existence alone does not prove that the
-carrier has the real field's mathematical properties.
+this work does not claim to have rechecked that imported library. The current
+Q/R and real-topology theorem tests audit transitive axiom dependencies against
+`propext`, `Quot.sound`, and `Classical.choice`. Quotient existence alone does
+not prove field properties; those are separate checked theorems in M1–M3.
 
 ## Required next proofs, in dependency order
 
@@ -42,14 +45,16 @@ carrier has the real field's mathematical properties.
 2. ~~Cauchy equivalence and well-defined arithmetic on the quotient; ring laws,
    inverse, order, Archimedean property, density and completeness~~ (done,
    M2/M3: `R` is a complete ordered field).
-3. Real metric/open-set topology, neighborhood limits, continuity of arithmetic.
+3. ~~Real epsilon-ball/open-set topology, neighborhood limits, continuity of
+   arithmetic, and equivalence with preimage continuity~~ (done, M4).
 4. Epsilon-delta `HasDerivAt`, uniqueness and constant/id/add/neg/mul/chain laws;
    polynomial real semantics, rational cast bridge and derivative correctness.
 5. Finite-dimensional derivatives and Euler–Lagrange physics interfaces.
 
-No `Real` complete ordered field, completeness axiom, or `HasDerivAt` axiom is
-introduced to bypass these obligations. The provisional construction lives under
-`Emmy.Analysis.RealConstruction`, rather than claiming compatibility with Mathlib.
+No field, completeness, or `HasDerivAt` axioms are introduced to bypass these
+obligations. The implemented reals live under `Emmy.Analysis.R`; the superseded
+provisional construction lives under `Emmy.Analysis.RealConstruction`. Neither
+namespace claims drop-in compatibility with Mathlib.
 
 ## Proof infrastructure (M0)
 
@@ -176,6 +181,44 @@ Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,
 `mul_lt_of_lt_of_lt`, `abs_le_add_dist`, `le_add_of_nonneg_*`,
 `lt_add_of_pos_*`).
+
+### Epsilon-ball topology and continuity bridge
+
+`emmy.ansatz.analysis.real-topology/install!` installs the real library and the
+generic topology library, then declares `Emmy.Analysis.RealTopology.*`:
+
+- `Ball x ε := {y | |y − x| < ε}`.
+- `IsOpen U := ∀ x ∈ U, ∃ δ > 0, ∀ y, |y − x| < δ → y ∈ U`.
+- `space : Topology.Space R`, with checked empty/universal, intersection and
+  arbitrary-union axioms (`isOpen_empty`, `isOpen_univ`, `isOpen_inter`,
+  `isOpen_sUnion`).
+- `isOpen_ball` for every radius (including nonpositive radii), and
+  `mem_ball_self` for positive radii.
+- `continuous_iff : ∀ f, R.Continuous f ↔
+  Topology.Continuous R R space space f`.
+
+Intersections use `exists_pos_lt_both`. Ball openness uses rational density to
+choose `b` strictly between `|x − center|` and the radius, then takes the local
+radius `ε − b`. The reverse continuity bridge applies preimage openness to a
+ball centered at `f x`; the forward bridge composes local epsilon-delta bounds.
+The proof tests check complete statements, reject mismatched conclusions, and
+audit dependencies against `propext`, `Quot.sound`, and `Classical.choice` only.
+
+### Continuation combinator
+
+`kernel/with-cont` flattens continuation-last proof eliminators:
+
+```clojure
+(t/with-cont [[d1 hd1 hall1] (near-elim f x L eps goal hf)
+              [d2 hd2 hall2] (near-elim g x M eps goal hg)
+              [d hd hda hdb] (pick-min d1 d2 hd1 hd2 goal)]
+  (finish d hd hall1 hall2 hda hdb))
+```
+
+This is syntax for nested ordinary `fn` continuations, not a new tactic or proof
+rule. The sum-limit proof and the real topology proofs use it. Scope, evaluation
+order, malformed input, kernel verification, and lint bindings are covered by
+tests and the associated clj-kondo hook.
 
 ## Rational coefficients in the verified calculus
 

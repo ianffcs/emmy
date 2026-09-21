@@ -35,6 +35,26 @@
   (reduce (fn [body [sym domain]] `(lam ~(str sym) ~domain (fn [~sym] ~body)))
           body (reverse bindings)))
 
+(defmacro with-cont
+  "Flattens continuation-last proof builders into sequential bindings.
+
+  (with-cont [[w hw] (eliminate witness goal)
+              [v hv] (eliminate (use w hw) goal)]
+    (finish w hw v hv))
+
+  Expands to nested calls with ordinary Clojure fn continuations. It introduces
+  no kernel declarations, axioms or implicit proof steps. Branching eliminators
+  remain explicit. Each binding vector names the continuation arguments."
+  [bindings body]
+  (when-not (and (vector? bindings) (even? (count bindings)))
+    (throw (IllegalArgumentException. "with-cont expects an even binding vector")))
+  (reduce
+   (fn [tail [params call]]
+     (when-not (and (vector? params) (every? symbol? params) (seq? call))
+       (throw (IllegalArgumentException. "with-cont expects [symbols] and a call")))
+     `(~@call (fn ~params ~tail)))
+   body (reverse (partition 2 bindings))))
+
 (defn arrow [a b] (e/arrow a b))
 (defn app [f & xs] (apply e/app* f xs))
 (defn predicate [a] (arrow a prop))

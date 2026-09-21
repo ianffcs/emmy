@@ -56,4 +56,5 @@
 
    emmy.ansatz.rules/defruleset hooks.emmy.ansatz.rules/defruleset
    emmy.ansatz.analysis.kernel/forall hooks.emmy.ansatz.analysis/typed-binders
-   emmy.ansatz.analysis.kernel/lambda hooks.emmy.ansatz.analysis/typed-binders}}}
+   emmy.ansatz.analysis.kernel/lambda hooks.emmy.ansatz.analysis/typed-binders
+   emmy.ansatz.analysis.kernel/with-cont hooks.emmy.ansatz.analysis/with-cont}}}

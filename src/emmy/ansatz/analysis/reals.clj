@@ -2092,22 +2092,18 @@
               e2 (mul half eps)
               he2 (t/app (c "half_pos") eps he)
               goal (near h x (add L M) eps)]
-          (near-elim f x L e2 goal (t/app hf e2 he2)
-                     (fn [d1 hd1 hall1]
-                       (near-elim g x M e2 goal (t/app hg e2 he2)
-                                  (fn [d2 hd2 hall2]
-                                    (pick-min d1 d2 hd1 hd2 goal
-                                              (fn [d hd hda hdb]
-                                                (near-intro h x (add L M) eps d hd
-                                                            (t/lambda [[y R] [hy0 (lt zero (abs (sub y x)))] [hy (lt (abs (sub y x)) d)]]
-                                                              (let [b1 (t/app hall1 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d1 hy hda))
-                                                                    b2 (t/app hall2 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d2 hy hdb))
-                                                                    sum (t/app (c "dist_add_lt") (t/app f y) L (t/app g y) M e2 e2 b1 b2)]
-                                                                (t/transport-at R l1
-                                                                                (t/lambda [[z R]] (lt (abs (sub (add (t/app f y) (t/app g y)) (add L M))) z))
-                                                                                (add e2 e2) eps
-                                                                                (t/app (c "half_add_half") eps)
-                                                                                sum)))))))))))))
+          (t/with-cont
+            [[d1 hd1 hall1] (near-elim f x L e2 goal (t/app hf e2 he2))
+             [d2 hd2 hall2] (near-elim g x M e2 goal (t/app hg e2 he2))
+             [d hd hda hdb] (pick-min d1 d2 hd1 hd2 goal)]
+            (near-intro h x (add L M) eps d hd
+              (t/lambda [[y R] [hy0 (lt zero (abs (sub y x)))] [hy (lt (abs (sub y x)) d)]]
+                (let [b1 (t/app hall1 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d1 hy hda))
+                      b2 (t/app hall2 y hy0 (t/app (c "lt_trans") (abs (sub y x)) d d2 hy hdb))
+                      sum (t/app (c "dist_add_lt") (t/app f y) L (t/app g y) M e2 e2 b1 b2)]
+                  (t/transport-at R l1
+                    (t/lambda [[z R]] (lt (abs (sub (add (t/app f y) (t/app g y)) (add L M))) z))
+                    (add e2 e2) eps (t/app (c "half_add_half") eps) sum))))))))
     (theorem! "tendsto_neg"
       (t/forall [[f Fn] [x R] [L R]]
         (implies (tends-to-at f x L) (tends-to-at (t/lam "y" R #(neg (t/app f %))) x (neg L))))
