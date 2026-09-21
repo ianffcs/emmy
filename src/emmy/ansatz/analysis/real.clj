@@ -66,8 +66,9 @@
 
 (defn- cauchy-tail [s eps n]
   (t/forall [[i nat] [j nat]]
-    (t/arrow (le n i) (t/arrow (le n j)
-                              (close-at (t/app s i) (t/app s j) eps)))))
+    (t/>-> (le n i)
+           (le n j)
+           (close-at (t/app s i) (t/app s j) eps))))
 
 (defn install!
   "Installs the exact sequence/quotient carrier and quotient soundness theorem.
@@ -76,7 +77,7 @@
   (k/ensure-init!)
   (locking k/install-lock
     (define! "RationalRep" t/type0 rep)
-    (define! "Within" (t/arrow rep (t/arrow rep (t/arrow rep t/prop)))
+    (define! "Within" (t/>-> rep rep rep t/prop)
       (t/lambda [[a rep] [b rep] [eps rep]]
         (let [difference (k/mul (k/sub (k/mul (num a) (den b))
                                        (k/mul (num b) (den a))) (den eps))
@@ -87,11 +88,7 @@
         (t/forall [[eps rep]]
           (t/arrow (lt k/zero (num eps))
                    (t/exists' nat
-                     (t/lambda [[n nat]]
-                       (t/forall [[i nat] [j nat]]
-                         (t/arrow (le n i)
-                                  (t/arrow (le n j)
-                                           (close-at (t/app s i) (t/app s j) eps))))))))))
+                     (t/lambda [[n nat]] (cauchy-tail s eps n)))))))
     (define! "CauchySequence" t/type0
       (t/app (k/const "Subtype" u) sequence-type (c "Cauchy")))
     (theorem! "within_self"
@@ -107,10 +104,10 @@
         (let [s (t/app (c "constantSequence") r)
               predicate (t/lambda [[n nat]] (cauchy-tail s eps n))]
           (t/app (k/const "Exists.intro" u) nat predicate (e/lit-nat 0)
-                 (t/lambda [[i nat] [j nat]]
-                   (t/lam "hi" (le (e/lit-nat 0) i)
-                     (fn [_] (t/lam "hj" (le (e/lit-nat 0) j)
-                               (fn [_] (t/app (c "within_self") r eps positive))))))))))
+                 (t/lambda [[i nat] [j nat]
+                            [_hi (le (e/lit-nat 0) i)]
+                            [_hj (le (e/lit-nat 0) j)]]
+                   (t/app (c "within_self") r eps positive))))))
     (define! "rationalSequence" (t/arrow rep (c "CauchySequence"))
       (t/lambda [[r rep]]
         (t/app (k/const "Subtype.mk" u) sequence-type (c "Cauchy")

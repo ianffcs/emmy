@@ -65,13 +65,29 @@
                       (swap! atoms #(-> % (assoc-in [:map x] fv) (update :order conj x)))
                       fv)))]
     (cond
-      (numeral? x) x
-      (and (#{"HAdd.hAdd" "HSub.hSub"} h) (= n 6)) (binop h (recur* (args 4)) (recur* (args 5)))
-      (and (#{"Int.add" "Int.sub"} h) (= n 2)) (binop h (recur* (args 0)) (recur* (args 1)))
-      (and (#{"Neg.neg"} h) (= n 3)) (k/neg (recur* (args 2)))
-      (and (#{"Int.neg"} h) (= n 1)) (k/neg (recur* (args 0)))
-      (and (= h "HMul.hMul") (= n 6) (numeral? (args 4))) (k/mul (args 4) (recur* (args 5)))
-      (and (= h "HMul.hMul") (= n 6) (numeral? (args 5))) (k/mul (recur* (args 4)) (args 5))
+      (numeral? x)
+      x
+
+      ;; Typeclass operations carry type and instance arguments before operands.
+      (and (#{"HAdd.hAdd" "HSub.hSub"} h) (= n 6))
+      (binop h (recur* (args 4)) (recur* (args 5)))
+
+      (and (#{"Int.add" "Int.sub"} h) (= n 2))
+      (binop h (recur* (args 0)) (recur* (args 1)))
+
+      (and (#{"Neg.neg"} h) (= n 3))
+      (k/neg (recur* (args 2)))
+
+      (and (#{"Int.neg"} h) (= n 1))
+      (k/neg (recur* (args 0)))
+
+      ;; Multiplication stays linear only when one operand is a numeral.
+      (and (= h "HMul.hMul") (= n 6) (numeral? (args 4)))
+      (k/mul (args 4) (recur* (args 5)))
+
+      (and (= h "HMul.hMul") (= n 6) (numeral? (args 5)))
+      (k/mul (recur* (args 4)) (args 5))
+
       :else (atom!))))
 
 (defn- abstract-prop [atoms p]
