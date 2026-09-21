@@ -33,24 +33,20 @@
         empty-set (t/lam "x" a (fn [_] (k/const "False")))
         full-set (t/lam "x" a (fn [_] (k/const "True")))
         intersections
-        (t/pi "U" set-a
-              (fn [v] (t/pi "V" set-a
-                            (fn [w]
-                              (t/arrow (t/app o v)
-                                       (t/arrow (t/app o w)
-                                                (t/app o (t/lam "x" a
-                                                                #(t/and' (t/app v %) (t/app w %))))))))))
+        (t/forall [[v set-a] [w set-a]]
+          (t/>-> (t/app o v)
+                 (t/app o w)
+                 (t/app o (t/lambda [[x a]]
+                            (t/and' (t/app v x) (t/app w x))))))
         unions
-        (t/pi "family" (t/predicate set-a)
-              (fn [family]
-                (t/arrow
-                 (t/pi "U" set-a #(t/arrow (t/app family %) (t/app o %)))
-                 (t/app o
-                        (t/lam "x" a
-                               (fn [x]
-                                 (t/exists' set-a
-                                            (t/lam "U" set-a
-                                                   #(t/and' (t/app family %) (t/app % x))))))))))]
+        (t/forall [[family (t/predicate set-a)]]
+          (t/arrow
+           (t/forall [[v set-a]] (t/arrow (t/app family v) (t/app o v)))
+           (t/app o
+             (t/lambda [[x a]]
+               (t/exists' set-a
+                 (t/lambda [[v set-a]]
+                   (t/and' (t/app family v) (t/app v x))))))))]
     (t/and' (t/app o empty-set)
             (t/and' (t/app o full-set) (t/and' intersections unions)))))
 
@@ -96,34 +92,22 @@
     (when-not (k/installed? (str prefix "Continuous"))
       (t/install-declaration!
        :def (str prefix "Continuous")
-       (t/pi "A" t/type0
-             (fn [a] (t/pi "B" t/type0
-                           #(t/arrow (space a) (t/arrow (space %) (t/arrow (t/arrow a %) t/prop))))))
-       (t/lam "A" t/type0
-              (fn [a]
-                (t/lam "B" t/type0
-                       (fn [b]
-                         (t/lam "source" (space a)
-                                (fn [sa]
-                                  (t/lam "target" (space b)
-                                         (fn [sb]
-                                           (t/lam "f" (t/arrow a b)
-                                                  (fn [f]
-                                                    (t/pi "U" (t/predicate b)
-                                                          (fn [v]
-                                                            (t/arrow (t/app (opens b sb) v)
-                                                                     (t/app (opens a sa)
-                                                                            (t/lam "x" a #(t/app v (t/app f %)))))))))))))))))))
+       (t/forall [[a t/type0] [b t/type0]]
+         (t/>-> (space a) (space b) (t/arrow a b) t/prop))
+       (t/lambda [[a t/type0] [b t/type0]
+                  [source (space a)] [target (space b)] [f (t/arrow a b)]]
+         (t/forall [[v (t/predicate b)]]
+           (let [preimage (t/lambda [[x a]] (t/app v (t/app f x)))]
+             (t/arrow (t/app (opens b target) v)
+                      (t/app (opens a source) preimage)))))))
     (when-not (k/installed? (str prefix "continuous_id"))
       (t/install-declaration!
        :thm (str prefix "continuous_id")
-       (t/pi "A" t/type0
-             (fn [a] (t/pi "space" (space a)
-                           #(continuous a a % % (t/lam "x" a identity)))))
-       (t/lam "A" t/type0
-              (fn [a] (t/lam "space" (space a)
-                            (fn [sa] (t/lam "U" (t/predicate a)
-                                            #(t/lam "open" (t/app (opens a sa) %) identity))))))))
+       (t/forall [[a t/type0] [sa (space a)]]
+         (continuous a a sa sa (t/lambda [[x a]] x)))
+       (t/lambda [[a t/type0] [sa (space a)]
+                  [v (t/predicate a)] [hv (t/app (opens a sa) v)]]
+         hv)))
     (when-not (k/installed? (str prefix "continuous_comp"))
       (t/install-declaration!
        :thm (str prefix "continuous_comp")
