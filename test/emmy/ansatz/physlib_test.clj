@@ -1,7 +1,9 @@
 #_"SPDX-License-Identifier: GPL-3.0"
 
 (ns emmy.ansatz.physlib-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [ansatz.kernel.env :as env]
+            [clojure.test :refer [deftest is testing]]
+            [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.core :as k]
             [emmy.ansatz.expression :as expression]
             [emmy.ansatz.physlib :as physlib]
@@ -32,3 +34,15 @@
     (is (not (physlib/derivative-proof? (assoc p :statement (k/eq k/zero (k/lit 1))))))
     (is (not (physlib/derivative-proof? (assoc p :expression '(* x x x)))))
     (is (not (physlib/derivative-proof? (assoc p :params ['z]))))))
+
+(deftest euler-lagrange-facts-are-checked-theorems
+  (is (= [:free-particle-force :free-particle-momentum :momentum-derivative :uniform-motion]
+         (vec (keys (physlib/lagrange-facts)))))
+  (doseq [fact (keys (physlib/lagrange-facts))
+          :let [{:keys [theorem statement proof]} (physlib/lagrange-proof fact)]]
+    (testing (str fact)
+      (is (env/verifies? (k/env) statement proof))
+      (is (not (env/verifies? (k/env) (k/eq k/zero (k/lit 1)) proof)))
+      (is (every? #{"propext" "Quot.sound" "Classical.choice"} (t/axioms-of theorem)))))
+  (testing "an unknown fact is refused rather than guessed at"
+    (is (thrown? clojure.lang.ExceptionInfo (physlib/lagrange-proof :gravity)))))

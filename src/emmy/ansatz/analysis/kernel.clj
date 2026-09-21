@@ -4,6 +4,7 @@
   "Typed term builders for the independent analysis library.
   Every new definition and theorem passes through check-constant. No axiom
   constructor or unchecked environment insertion is exposed here."
+  (:refer-clojure :exclude [->])
   (:require [ansatz.core :as a]
             [ansatz.kernel.env :as env]
             [ansatz.kernel.expr :as e]
@@ -56,6 +57,20 @@
    body (reverse (partition 2 bindings))))
 
 (defn arrow [a b] (e/arrow a b))
+
+(defmacro ->
+  "Threads a type term through arrow-building forms like `clojure.core/->`.
+
+  `(-> A (arrow B) (arrow C))` expands to
+  `(arrow (arrow A B) C)`. The macro is deliberately only syntactic: all
+  resulting terms are still checked by the Ansatz kernel when installed."
+  [x & forms]
+  (reduce (fn [form step]
+            (if (seq? step)
+              (with-meta (list* (first step) form (next step)) (meta step))
+              (list step form)))
+          x forms))
+
 (defn app [f & xs] (apply e/app* f xs))
 (defn predicate [a] (arrow a prop))
 (defn and' [a b] (app (k/const "And") a b))

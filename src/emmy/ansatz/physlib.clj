@@ -13,6 +13,7 @@
   (:require [ansatz.kernel.env :as env]
             [ansatz.kernel.level :as level]
             [emmy.ansatz.analysis.kernel :as t]
+            [emmy.ansatz.analysis.lagrange :as lagrange]
             [emmy.ansatz.analysis.polynomial :as polynomial]
             [emmy.ansatz.calculus :as calculus]
             [emmy.ansatz.core :as k]
@@ -95,6 +96,42 @@
   convention for the supplied argument count."
   [f n]
   (calculus/gradient f n))
+
+(def ^:private lagrange-theorems
+  {:free-particle-momentum
+   {:name "Emmy.Analysis.Lagrange.kinetic_momentum"
+    :reading "d/dv (½·m·v²) = m·v: the free particle's momentum is derived, not assumed."}
+   :free-particle-force
+   {:name "Emmy.Analysis.Lagrange.kinetic_force"
+    :reading "∂/∂q (½·m·v²) = 0: the free Lagrangian does not depend on position."}
+   :momentum-derivative
+   {:name "Emmy.Analysis.Lagrange.momentum_deriv"
+    :reading "d/dt (m·v t) = m·a whenever the velocity has derivative a."}
+   :uniform-motion
+   {:name "Emmy.Analysis.Lagrange.free_particle_uniform"
+    :reading "A path with zero acceleration satisfies d/dt (∂L/∂v) = ∂L/∂q for L = ½·m·v²."}})
+
+(defn lagrange-proof
+  "Returns the installed kernel theorem backing one Euler–Lagrange fact,
+  checked against its own statement before being handed back. `which` is one of
+  the keys of [[lagrange-facts]]. This is a proof term, not a numeric result."
+  [which]
+  (let [{:keys [name reading]} (or (get lagrange-theorems which)
+                                   (throw (ex-info "Unknown Euler–Lagrange fact"
+                                                   {:requested which
+                                                    :available (sort (keys lagrange-theorems))})))]
+    (k/ensure-init!)
+    (lagrange/install!)
+    (let [{:keys [statement proof]} (t/declaration name)]
+      (when-not (env/verifies? (k/env) statement proof)
+        (throw (ex-info "Kernel rejected Euler–Lagrange proof" {:theorem name})))
+      {:fact which :theorem name :reading reading :statement statement :proof proof})))
+
+(defn lagrange-facts
+  "The Euler–Lagrange facts [[lagrange-proof]] can supply, with their readings."
+  []
+  (into (sorted-map)
+        (map (fn [[k v]] [k (:reading v)])) lagrange-theorems))
 
 (defn approximate-value
   "Evaluates using double arithmetic, without a certified error bound.
