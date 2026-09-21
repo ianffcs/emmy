@@ -182,6 +182,11 @@
   [x y eps e h]
   (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt z eps)) x y e h))
 
+(defn- rewrite-lt-right
+  "Proof of `z < y` from `h : z < x` and `e : x = y` in `Q`."
+  [x y z e h]
+  (t/transport-at Q l1 (t/lambda [[w Q]] (q/lt z w)) x y e h))
+
 (def qconf
   "Quotient description of `R` for the generic lifting helpers."
   {:alpha (c "CSeq") :rel (c "Equiv")
@@ -1161,6 +1166,81 @@
                                                                 (symm-c (cinv s) inv-s (branch-eq s true hap))
                                                                 sound-eq))))))))))))
 
+;; ## Density of ℚ in ℝ
+;;
+;; If `x < y` then `y − x` is eventually above some ε, and `s n₀ + ε/2` (for a
+;; threshold index `n₀`) sits strictly between them, with ε/4 to spare on each
+;; side.
+
+(defn- install-density! []
+  (let [quarter #(q/mul q/half (q/mul q/half %))]
+    (theorem! "dense"
+      (t/forall [[x R] [y R]]
+        (implies (lt x y)
+                 (t/exists' Q (t/lambda [[p Q]] (t/and' (lt x (of-q p)) (lt (of-q p) y))))))
+      (q/lams ["x" "y"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys]
+                                   (let [[x y] ys]
+                                     (implies (lt x y)
+                                              (t/exists' Q (t/lambda [[p Q]] (t/and' (lt x (of-q p)) (lt (of-q p) y)))))))
+                                 (fn [[a b]]
+                                   (let [x (t/quot-mk CSeq (c "Equiv") a) y (t/quot-mk CSeq (c "Equiv") b)
+                                         between (fn [p] (t/and' (lt x (of-q p)) (lt (of-q p) y)))
+                                         goal (t/exists' Q (t/lambda [[p Q]] (between p)))
+                                         diff (cadd b (cneg a))]
+                                     (t/lam "hlt" (lt x y)
+                                            (fn [hlt]
+                                              (pos-elim (val' diff) goal hlt
+                                                        (fn [eps he N hN]
+                                                          (let [r (quarter eps)
+                                                                hr (t/app (qc "half_pos_of_pos") (q/mul q/half eps)
+                                                                          (t/app (qc "half_pos_of_pos") eps he))]
+                                                            (cauchy-elim (val' a) r goal (t/app (cauchy-of a) r hr)
+                                                                         (fn [N1 hN1]
+                                                                           (let [n0 (nat-add N N1)
+                                                                                 [_hn0 hn1] (threshold-le N N1 n0 (t/app (k/const "Nat.le_refl") n0))
+                                                                                 base (at a n0)
+                                                                                 p (q/add base (q/mul q/half eps))]
+                                                                             (t/exists-intro Q (t/lambda [[p' Q]] (between p')) p
+                                                                                             (t/and-intro (lt x (of-q p)) (lt (of-q p) y)
+                                                                                                          ;; x < p: p − a m > (a n₀ + ε/2) − (a n₀ + ε/4) = ε/4
+                                                                                                          (pos-intro (val' (cadd (cconst p) (cneg a))) r n0 hr
+                                                                                                                     (t/lambda [[m Nat] [hm (nat-le n0 m)]]
+                                                                                                                       (let [[_hm0 hm1] (threshold-le N N1 m hm)]
+                                                                                                                         (rewrite-lt-left
+                                                                                                                          (q/sub (q/add base (q/mul q/half eps)) (q/add base r)) r
+                                                                                                                          (q/sub p (at a m))
+                                                                                                                          (t/app (qc "quarter_gap_left") base eps)
+                                                                                                                          (t/app (qc "sub_lt_sub_left") (at a m) (q/add base r) p
+                                                                                                                                 (t/app (qc "lt_add_of_abs_sub_lt") (at a m) base r
+                                                                                                                                        (t/app hN1 m n0 hm1 hn1)))))))
+                                                                                                          ;; p < y: b m − p > ((a n₀ − ε/4) + ε) − (a n₀ + ε/2) = ε/4
+                                                                                                          (pos-intro (val' (cadd b (cneg (cconst p)))) r n0 hr
+                                                                                                                     (t/lambda [[m Nat] [hm (nat-le n0 m)]]
+                                                                                                                       (let [[hm0 hm1] (threshold-le N N1 m hm)
+                                                                                                                             am (at a m) bm (at b m)
+                                                                                                                             ;; ε + a m < b m
+                                                                                                                             hA (rewrite-lt-right
+                                                                                                                                 (q/add (q/sub bm am) am) bm (q/add eps am)
+                                                                                                                                 (t/app (qc "sub_add_cancel") bm am)
+                                                                                                                                 (t/app (qc "add_lt_add_right") eps (q/sub bm am) am
+                                                                                                                                        (t/app hN m hm0)))
+                                                                                                                             ;; (a n₀ − ε/4) + ε < ε + a m
+                                                                                                                             hB (rewrite-lt-right
+                                                                                                                                 (q/add am eps) (q/add eps am)
+                                                                                                                                 (q/add (q/sub base r) eps)
+                                                                                                                                 (t/app (qc "add_comm") am eps)
+                                                                                                                                 (t/app (qc "add_lt_add_right") (q/sub base r) am eps
+                                                                                                                                        (t/app (qc "sub_lt_of_dist_lt") base am r
+                                                                                                                                               (t/app hN1 n0 m hn1 hm1))))
+                                                                                                                             hC (t/app (qc "lt_trans") (q/add (q/sub base r) eps) (q/add eps am) bm hB hA)]
+                                                                                                                         (rewrite-lt-left
+                                                                                                                          (q/sub (q/add (q/sub base r) eps) p) r (q/sub bm p)
+                                                                                                                          (t/app (qc "quarter_gap_right") base eps)
+                                                                                                                          (t/app (qc "add_lt_add_right") (q/add (q/sub base r) eps) bm (q/neg p) hC)))))))))))))))))))))))
+
 ;; ## Installation
 
 (defn install!
@@ -1252,5 +1332,6 @@
     (install-apart!)
     (install-trichotomy!)
     (install-archimedean!)
-    (install-inv!))
+    (install-inv!)
+    (install-density!))
   :installed)

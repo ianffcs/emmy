@@ -25,7 +25,9 @@
    ;; Archimedean
    "sub_zero" "archimedean" "zero_lt_ofQ"
    ;; inverse
-   "apart_congr" "inv_cauchy" "inv_congr" "mul_inv_cancel"])
+   "apart_congr" "inv_cauchy" "inv_congr" "mul_inv_cancel"
+   ;; density
+   "dense"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"

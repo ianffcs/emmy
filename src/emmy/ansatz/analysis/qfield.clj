@@ -1096,6 +1096,31 @@
                      (symm-q (abs (inv p)) (inv (abs p)) (t/app (c "abs_inv") p p-ne))
                      (t/app (c "inv_lt_inv_of_lt") d (abs p) hd h)))))))
 
+;; ## Gaps for density
+;;
+;; With q = ε/2 and r = ε/4: `(a + q) − (a + r) = r` and
+;; `((a − r) + ε) − (a + q) = r`, the two gaps the density proof needs.
+
+(defn- install-density-lemmas! []
+  (let [rhalf {:rep (c "repHalf") :num k/one :den (k/lit 2)}
+        quarter #(mul half (mul half %))
+        rquarter #(rmul rhalf (rmul rhalf %))]
+    (quot-law! "quarter_gap_left" 2
+               #(sub (add %1 (mul half %2)) (add %1 (quarter %2))) #(quarter %2)
+               #(radd (radd %1 (rmul rhalf %2)) (rneg (radd %1 (rquarter %2))))
+               #(rquarter %2))
+    (quot-law! "quarter_gap_right" 2
+               #(sub (add (sub %1 (quarter %2)) %2) (add %1 (mul half %2))) #(quarter %2)
+               #(radd (radd (radd %1 (rneg (rquarter %2))) %2) (rneg (radd %1 (rmul rhalf %2))))
+               #(rquarter %2)))
+  (theorem! "lt_add_of_abs_sub_lt"
+    (t/forall [[a Q] [b Q] [d Q]] (implies (lt (abs (sub a b)) d) (lt a (add b d))))
+    (t/lambda [[a Q] [b Q] [d Q] [h (lt (abs (sub a b)) d)]]
+      (let [h1 (t/app (c "lt_of_le_of_lt") (sub a b) (abs (sub a b)) d (t/app (c "le_abs") (sub a b)) h)
+            h2 (t/app (c "add_lt_add_right") (sub a b) d b h1)
+            h3 (rewrite-q #(lt % (add d b)) (add (sub a b) b) a (t/app (c "sub_add_cancel") a b) h2)]
+        (rewrite-q #(lt a %) (add d b) (add b d) (t/app (c "add_comm") d b) h3)))))
+
 (defn- install-inv-estimate! []
   (let [step q-eq-map
         chain (fn [& maps] (:term (apply k/trans maps)))
@@ -1175,5 +1200,6 @@
     (install-mul-order!)
     (install-order-extras!)
     (install-inv-laws!)
-    (install-inv-estimate!))
+    (install-inv-estimate!)
+    (install-density-lemmas!))
   :installed)

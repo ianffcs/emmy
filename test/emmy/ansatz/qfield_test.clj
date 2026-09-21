@@ -34,7 +34,8 @@
    "sub_mul" "left_distrib_sub" "mul_left_comm" "mul_one" "mul_congr_fst" "mul_congr_snd"
    "sub_congr_fst" "sub_congr_snd" "abs_congr" "inv_mul_cancel" "inv_eq_of_mul_eq_one"
    "inv_zero" "abs_one" "abs_of_neg" "abs_pos_of_ne_zero" "abs_inv" "inv_lt_inv_of_lt"
-   "inv_sub_inv" "inv_mul_mul" "ne_zero_of_lt_abs" "abs_inv_lt" "dist_inv_lt"])
+   "inv_sub_inv" "inv_mul_mul" "ne_zero_of_lt_abs" "abs_inv_lt" "dist_inv_lt"
+   "quarter_gap_left" "quarter_gap_right" "lt_add_of_abs_sub_lt"])
 
 (deftest ordered-field-theorems
   (is (= :installed (q/install!)))
