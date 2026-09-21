@@ -965,6 +965,202 @@
                              (t/app (c "sub_zero") (of-q p)))
                       (t/app (c "positive_ofQ") p h)))))
 
+;; ## The multiplicative inverse
+;;
+;; `cinv` inverts a Cauchy sequence pointwise when it is apart from zero and is
+;; zero otherwise (the choice is classical, through `Classical.propDecidable`).
+;; Past the apartness threshold `|a⁻¹ − b⁻¹| = |a⁻¹|·(|b⁻¹|·|b − a|)` is small
+;; (`Q.dist_inv_lt`), which makes the inverted sequence Cauchy.
+
+(defn- apart-tail [f d]
+  (t/exists' Nat (t/lambda [[N Nat]]
+                   (t/forall [[n Nat]] (t/arrow (nat-le N n) (q/lt d (q/abs (t/app f n))))))))
+
+(defn- apart-all [f d N]
+  (t/forall [[n Nat]] (t/arrow (nat-le N n) (q/lt d (q/abs (t/app f n))))))
+
+(defn- apart-intro [f d N hp hall]
+  (t/exists-intro Q (t/lambda [[d' Q]] (t/and' (pos d') (apart-tail f d'))) d
+                  (t/and-intro (pos d) (apart-tail f d) hp
+                               (t/exists-intro Nat (t/lambda [[M Nat]] (apart-all f d M)) N hall))))
+
+(defn- apart-elim
+  "Proof of `goal` from `h : Apart`, with `k` called on the bound `δ`, a proof
+  of `0 < δ`, the threshold `N` and `hN : ∀ n ≥ N, δ < |f n|`."
+  [f goal h k]
+  (let [body (fn [d] (t/and' (pos d) (apart-tail f d)))]
+    (t/exists-elim Q (t/lambda [[d Q]] (body d)) goal h
+                   (t/lambda [[d Q] [hd (body d)]]
+                     (t/exists-elim Nat (t/lambda [[N Nat]] (apart-all f d N)) goal
+                                    (t/and-right (pos d) (apart-tail f d) hd)
+                                    (t/lambda [[N Nat] [hN (apart-all f d N)]]
+                                      (k d (t/and-left (pos d) (apart-tail f d) hd) N hN)))))))
+
+(defn inv [x] (t/app (c "inv") x))
+
+(defn- install-inv! []
+  (let [Apart' #(t/app (c "Apart") %)
+        inv-seq #(t/app (c "invSeq") %)
+        czero (cconst q/zero)
+        inst #(t/app (k/const "Classical.propDecidable") (Apart' %))
+        pos-branch (fn [x] (t/lam "h" (Apart' x)
+                                  #(make-cseq (inv-seq (val' x))
+                                              (t/app (c "inv_cauchy") (val' x) (cauchy-of x) %))))
+        neg-branch (fn [x] (t/lam "h" (t/not' (Apart' x)) (fn [_] czero)))
+        branch-eq (fn [x yes? h]
+                    (t/app (k/const (if yes? "dif_pos" "dif_neg") l1) (Apart' x) (inst x) h CSeq
+                           (pos-branch x) (neg-branch x)))
+        cinv #(t/app (c "cinv") %)
+        symm-c (fn [x y e] (t/app (k/const "Eq.symm" l1) CSeq x y e))]
+    (theorem! "apart_congr"
+      (t/forall [[s CSeq] [u CSeq]] (implies (equiv s u) (Apart' s) (Apart' u)))
+      (t/lambda [[s CSeq] [u CSeq] [h (equiv s u)] [ha (Apart' s)]]
+        (apart-elim (val' s) (Apart' u) ha
+                    (fn [d hd N1 hN1]
+                      (let [d2 (q/mul q/half d)
+                            hd2 (t/app (qc "half_pos_of_pos") d hd)
+                            P #(q/lt (dist (at s %) (at u %)) d2)]
+                        (eventually-elim P (Apart' u) (t/app h d2 hd2)
+                                         (fn [N2 hN2]
+                                           (apart-intro (val' u) d2 (nat-add N1 N2) hd2
+                                                        (t/lambda [[n Nat] [hn (nat-le (nat-add N1 N2) n)]]
+                                                          (let [[hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                            (t/app (qc "half_lt_abs") d (at s n) (at u n)
+                                                                   (t/app (qc "le_of_lt") d (q/abs (at s n))
+                                                                          (t/app hN1 n hn1))
+                                                                   (t/app hN2 n hn2))))))))))))
+    (define! "invSeq" (t/arrow Seq Seq)
+      (t/lambda [[f Seq]] (t/lam "n" Nat #(q/inv (t/app f %)))))
+    (theorem! "inv_cauchy"
+      (t/forall [[f Seq]] (implies (cauchy f) (apart-body f) (cauchy (inv-seq f))))
+      (t/lambda [[f Seq] [hf (cauchy f)] [hap (apart-body f)] [eps Q] [he (pos eps)]]
+        (let [h (inv-seq f)
+              goal (t/exists' Nat (t/lambda [[N Nat]] (cauchy-body h eps N)))]
+          (apart-elim f goal hap
+                      (fn [d hd N0 hN0]
+                        (let [tau (q/mul d (q/mul d eps))
+                              htau (t/app (qc "mul_pos") d (q/mul d eps) hd
+                                          (t/app (qc "mul_pos") d eps hd he))]
+                          (cauchy-elim f tau goal (t/app hf tau htau)
+                                       (fn [N1 hN1]
+                                         (cauchy-intro h eps (nat-add N0 N1)
+                                                       (t/lambda [[m Nat] [n Nat]
+                                                                  [hm (nat-le (nat-add N0 N1) m)]
+                                                                  [hn (nat-le (nat-add N0 N1) n)]]
+                                                         (let [[hm0 hm1] (threshold-le N0 N1 m hm)
+                                                               [hn0 hn1] (threshold-le N0 N1 n hn)]
+                                                           (t/app (qc "dist_inv_lt") d (t/app f m) (t/app f n) eps
+                                                                  hd (t/app hN0 m hm0) (t/app hN0 n hn0)
+                                                                  (t/app hN1 m n hm1 hn1)))))))))))))
+    (define! "cinv" (t/arrow CSeq CSeq)
+      (t/lambda [[s CSeq]]
+        (t/app (k/const "dite" l1) CSeq (Apart' s) (inst s) (pos-branch s) (neg-branch s))))
+    (theorem! "inv_congr"
+      (t/forall [[s CSeq] [u CSeq]] (implies (equiv s u) (equiv (cinv s) (cinv u))))
+      (t/lambda [[s CSeq] [u CSeq] [heq (equiv s u)]]
+        (let [goal (equiv (cinv s) (cinv u))
+              cases (fn [x f-yes f-no]
+                      (t/or-elim (Apart' x) (t/not' (Apart' x)) goal
+                                 (t/decidable-em (Apart' x) (inst x))
+                                 (t/lam "h" (Apart' x) f-yes)
+                                 (t/lam "hn" (t/not' (Apart' x)) f-no)))
+              ;; rewrite both inverses back to the branch values they reduce to
+              through (fn [X Y ex ey prf]
+                        (let [m1 (t/lambda [[z CSeq]] (equiv z (cinv u)))
+                              m2 (t/lambda [[z CSeq]] (equiv X z))
+                              step (t/transport-at CSeq l1 m2 Y (cinv u) (symm-c (cinv u) Y ey) prf)]
+                          (t/transport-at CSeq l1 m1 X (cinv s) (symm-c (cinv s) X ex) step)))
+              ;; both apart: δ/2 bounds both sequences below past the thresholds
+              both (fn [hs _hu]
+                     (t/lambda [[eps Q] [he (pos eps)]]
+                       (let [P #(q/lt (dist (q/inv (at s %)) (q/inv (at u %))) eps)
+                             g (eventually P)]
+                         (apart-elim (val' s) g hs
+                                     (fn [d hd N0 hN0]
+                                       (let [d2 (q/mul q/half d)
+                                             hd2 (t/app (qc "half_pos_of_pos") d hd)
+                                             tau (q/mul d2 (q/mul d2 eps))
+                                             htau (t/app (qc "mul_pos") d2 (q/mul d2 eps) hd2
+                                                         (t/app (qc "mul_pos") d2 eps hd2 he))
+                                             P1 #(q/lt (dist (at s %) (at u %)) d2)
+                                             P2 #(q/lt (dist (at s %) (at u %)) tau)]
+                                         (eventually-elim P1 g (t/app heq d2 hd2)
+                                                          (fn [N1 hN1]
+                                                            (eventually-elim P2 g (t/app heq tau htau)
+                                                                             (fn [N2 hN2]
+                                                                               (let [N12 (nat-add N1 N2)]
+                                                                                 (eventually-intro P (nat-add N0 N12)
+                                                                                                   (t/lambda [[n Nat] [hn (nat-le (nat-add N0 N12) n)]]
+                                                                                                     (let [[hn0 hnr] (threshold-le N0 N12 n hn)
+                                                                                                           [hn1 hn2] (threshold-le N1 N2 n hnr)
+                                                                                                           hsn (t/app hN0 n hn0)
+                                                                                                           hs2 (t/app (qc "lt_trans") d2 d (q/abs (at s n))
+                                                                                                                      (t/app (qc "half_lt_self") d hd) hsn)
+                                                                                                           hu2 (t/app (qc "half_lt_abs") d (at s n) (at u n)
+                                                                                                                      (t/app (qc "le_of_lt") d (q/abs (at s n)) hsn)
+                                                                                                                      (t/app hN1 n hn1))]
+                                                                                                       (t/app (qc "dist_inv_lt") d2 (at s n) (at u n) eps
+                                                                                                              hd2 hs2 hu2 (t/app hN2 n hn2))))))))))))))))]
+          (cases s
+                 (fn [hs]
+                   (cases u
+                          (fn [hu] (through (t/app (pos-branch s) hs) (t/app (pos-branch u) hu)
+                                            (branch-eq s true hs) (branch-eq u true hu)
+                                            (both hs hu)))
+                          (fn [hnu] (t/absurd' (Apart' u) goal (t/app (c "apart_congr") s u heq hs) hnu))))
+                 (fn [hns]
+                   (cases u
+                          (fn [hu] (t/absurd' (Apart' s) goal
+                                              (t/app (c "apart_congr") u s (t/app (c "equiv_symm") s u heq) hu)
+                                              hns))
+                          (fn [hnu] (through (t/app (neg-branch s) hns) (t/app (neg-branch u) hnu)
+                                             (branch-eq s false hns) (branch-eq u false hnu)
+                                             (t/app (c "equiv_refl") czero)))))))))
+    (define! "inv" (t/arrow R R)
+      (t/lift1* qconf cinv (fn [a b h] (t/app (c "inv_congr") a b h))))
+    ;; x·x⁻¹ = 1: past the apartness threshold every term is invertible
+    (theorem! "mul_inv_cancel"
+      (t/forall [[x R]] (implies (t/not' (eq-r x zero)) (eq-r (mul x (inv x)) one)))
+      (q/lams ["x"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (let [x (first ys)]
+                                              (implies (t/not' (eq-r x zero)) (eq-r (mul x (inv x)) one))))
+                                 (fn [[s]]
+                                   (let [x (t/quot-mk CSeq (c "Equiv") s)
+                                         _goal (eq-r (mul x (inv x)) one)]
+                                     (t/lam "hne" (t/not' (eq-r x zero))
+                                            (fn [hne]
+                                              (let [hnq (t/lam "he" (equiv s czero)
+                                                               #(t/app hne (t/quot-sound CSeq (c "Equiv") s czero %)))
+                                                    hap (t/app (c "apart_of_ne") s hnq)
+                                                    inv-s (t/app (pos-branch s) hap)
+                                                    ;; the product is eventually exactly 1
+                                                    prf (t/lambda [[eps Q] [he (pos eps)]]
+                                                          (let [P #(q/lt (dist (q/mul (at s %) (q/inv (at s %))) q/one) eps)]
+                                                            (apart-elim (val' s) (eventually P) hap
+                                                                        (fn [d hd N0 hN0]
+                                                                          (eventually-intro P N0
+                                                                                            (t/lambda [[n Nat] [hn (nat-le N0 n)]]
+                                                                                              (t/transport-at Q l1
+                                                                                                              (t/lambda [[z Q]] (q/lt (dist z q/one) eps))
+                                                                                                              q/one (q/mul (at s n) (q/inv (at s n)))
+                                                                                                              (t/app (k/const "Eq.symm" l1) Q
+                                                                                                                     (q/mul (at s n) (q/inv (at s n))) q/one
+                                                                                                                     (t/app (qc "mul_inv_cancel") (at s n)
+                                                                                                                            (t/app (qc "ne_zero_of_lt_abs") d (at s n)
+                                                                                                                                   hd (t/app hN0 n hn))))
+                                                                                                              (dist-self-lt q/one eps he))))))))
+                                                    sound-eq (t/quot-sound CSeq (c "Equiv")
+                                                                           (t/app (c "cmul") s inv-s) (cconst q/one) prf)]
+                                                ;; rewrite cinv s back into the product
+                                                (t/transport-at CSeq l1
+                                                                (t/lambda [[z CSeq]]
+                                                                  (eq-r (t/quot-mk CSeq (c "Equiv") (t/app (c "cmul") s z)) one))
+                                                                inv-s (cinv s)
+                                                                (symm-c (cinv s) inv-s (branch-eq s true hap))
+                                                                sound-eq))))))))))))
+
 ;; ## Installation
 
 (defn install!
@@ -1055,5 +1251,6 @@
     (install-order-laws!)
     (install-apart!)
     (install-trichotomy!)
-    (install-archimedean!))
+    (install-archimedean!)
+    (install-inv!))
   :installed)

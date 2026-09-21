@@ -131,6 +131,16 @@ gives `lt_trichotomy : x < y ∨ x = y ∨ y < x` on `R`, with
 `R.ofInt` and `archimedean : ∀ x, ∃ m : Int, x < ofInt m` follow from
 boundedness of Cauchy sequences plus `Q.archimedean`.
 
+The inverse (M3): `cinv` inverts a Cauchy sequence pointwise when it is apart
+from zero (`Classical.propDecidable` decides which branch) and is zero
+otherwise. Past the apartness threshold the estimate
+`|a⁻¹ − b⁻¹| = |a⁻¹|·(|b⁻¹|·|b − a|)` (`Q.dist_inv_lt`, from `Q.inv_sub_inv`
+and `Q.abs_inv_lt`) makes the inverted sequence Cauchy (`inv_cauchy`) and
+respects equivalence (`inv_congr`, with `apart_congr`). This gives `R.inv` and
+`mul_inv_cancel : x ≠ 0 → x · x⁻¹ = 1`, so `R` is a field. New `Q` inverse
+lemmas: `inv_mul_cancel`, `inv_eq_of_mul_eq_one`, `inv_zero`, `abs_inv`,
+`inv_lt_inv_of_lt`, `inv_mul_mul`, `abs_pos_of_ne_zero`, `abs_of_neg`.
+
 Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 `dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative
 order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,

@@ -888,6 +888,256 @@
             h6 (rewrite-q #(lt % (sub a he)) (sub e he) he (t/app (c "sub_half") e) h5)]
         (t/app (c "lt_trans") he (sub a he) b h6 h4)))))
 
+;; ## Inverses
+
+(defn- install-inv-laws! []
+  (quot-law! "sub_mul" 3 #(mul (sub %1 %2) %3) #(sub (mul %1 %3) (mul %2 %3))
+             #(rmul (radd %1 (rneg %2)) %3) #(radd (rmul %1 %3) (rneg (rmul %2 %3))))
+  (quot-law! "left_distrib_sub" 3 #(mul %1 (sub %2 %3)) #(sub (mul %1 %2) (mul %1 %3))
+             #(rmul %1 (radd %2 (rneg %3))) #(radd (rmul %1 %2) (rneg (rmul %1 %3))))
+  (quot-law! "mul_left_comm" 3 #(mul %1 (mul %2 %3)) #(mul %2 (mul %1 %3))
+             #(rmul %1 (rmul %2 %3)) #(rmul %2 (rmul %1 %3)))
+  (quot-law! "mul_one" 1 #(mul % one) identity #(rmul % rone) identity)
+  (doseq [[label op arg] [["mul_congr_fst" mul :fst] ["mul_congr_snd" mul :snd]
+                          ["sub_congr_fst" sub :fst] ["sub_congr_snd" sub :snd]]]
+    (theorem! label
+      (t/forall [[a Q] [x Q] [y Q]]
+        (implies (eq-q x y)
+                 (if (= arg :fst) (eq-q (op x a) (op y a)) (eq-q (op a x) (op a y)))))
+      (t/lambda [[a Q] [x Q] [y Q] [h (eq-q x y)]]
+        (t/app (k/const "congrArg" l1 l1) Q Q x y
+               (if (= arg :fst) (t/lambda [[z Q]] (op z a)) (t/lambda [[z Q]] (op a z))) h))))
+  (theorem! "abs_congr"
+    (t/forall [[x Q] [y Q]] (implies (eq-q x y) (eq-q (abs x) (abs y))))
+    (t/lambda [[x Q] [y Q] [h (eq-q x y)]]
+      (t/app (k/const "congrArg" l1 l1) Q Q x y (c "abs") h)))
+  (let [step q-eq-map
+        chain (fn [& maps] (:term (apply k/trans maps)))
+        symm-q (fn [x y e] (t/app (k/const "Eq.symm" l1) Q x y e))
+        ne-zero (fn [p] (t/not' (eq-q p zero)))]
+    (theorem! "inv_mul_cancel"
+      (t/forall [[p Q]] (implies (ne-zero p) (eq-q (mul (inv p) p) one)))
+      (t/lambda [[p Q] [h (ne-zero p)]]
+        (chain (step (mul (inv p) p) (mul p (inv p)) (t/app (c "mul_comm") (inv p) p))
+               (step (mul p (inv p)) one (t/app (c "mul_inv_cancel") p h)))))
+    ;; a⁻¹ is the unique b with a·b = 1
+    (theorem! "inv_eq_of_mul_eq_one"
+      (t/forall [[p Q] [q Q]] (implies (ne-zero p) (eq-q (mul p q) one) (eq-q (inv p) q)))
+      (t/lambda [[p Q] [q Q] [hne (ne-zero p)] [h (eq-q (mul p q) one)]]
+        (let [ip (inv p)]
+          (chain (step ip (mul ip one) (symm-q (mul ip one) ip (t/app (c "mul_one") ip)))
+                 (step (mul ip one) (mul ip (mul p q))
+                       (t/app (c "mul_congr_snd") ip one (mul p q)
+                              (symm-q (mul p q) one h)))
+                 (step (mul ip (mul p q)) (mul (mul ip p) q)
+                       (symm-q (mul (mul ip p) q) (mul ip (mul p q)) (t/app (c "mul_assoc") ip p q)))
+                 (step (mul (mul ip p) q) (mul one q)
+                       (t/app (c "mul_congr_fst") q (mul ip p) one
+                                     (t/app (c "inv_mul_cancel") p hne)))
+                 (step (mul one q) q (t/app (c "one_mul") q))))))
+    (theorem! "inv_zero" (eq-q (inv zero) zero)
+      (let [a (c "repZero")
+            e (t/app (k/const "dif_pos" l1) (k/eq (rnum a) k/zero) (t/app (k/const "Int.decEq") (rnum a) k/zero)
+                     (t/app (k/const "Eq.refl" l1) k/int-type k/zero) rep
+                     (t/lam "h" (k/eq (rnum a) k/zero) (fn [_] (c "repZero")))
+                     (t/lam "h" (t/not' (k/eq (rnum a) k/zero))
+                            #(rat/make-rep (k/mul (rnum a) (rden a)) (k/mul (rnum a) (rnum a))
+                                           (t/app (k/const "Emmy.Analysis.Int.mul_self_pos") (rnum a) %))))]
+        (t/app (k/const "congrArg" l1 l1) rep Q (t/app (c "repInv") a) a
+               (t/lambda [[z rep]] (mk z)) e)))
+    (theorem! "abs_one" (eq-q (abs one) one)
+      (sound (t/app (c "repAbs") (c "repOne")) (c "repOne")
+             (o/with-abs-cases [k/one] (k/eq (k/mul (o/abs k/one) k/one) (k/mul k/one k/one))
+               #(o/by-omega (k/eq (k/mul (o/abs k/one) k/one) (k/mul k/one k/one)) %))))
+    (theorem! "abs_of_neg"
+      (t/forall [[p Q]] (implies (lt p zero) (eq-q (abs p) (neg p))))
+      (t/lambda [[p Q] [h (lt p zero)]]
+        (chain (step (abs p) (abs (neg p)) (symm-q (abs (neg p)) (abs p) (t/app (c "abs_neg") p)))
+               (step (abs (neg p)) (neg p) (t/app (c "abs_of_pos") (neg p) (t/app (c "neg_pos_of_neg") p h))))))
+    (theorem! "abs_pos_of_ne_zero"
+      (t/forall [[p Q]] (implies (ne-zero p) (lt zero (abs p))))
+      (t/lambda [[p Q] [hne (ne-zero p)]]
+        (let [goal (lt zero (abs p))
+              E (eq-q p zero)]
+          (t/or-elim (lt p zero) (t/or' E (lt zero p)) goal
+                     (t/app (c "lt_trichotomy") p zero)
+                     (t/lam "hneg" (lt p zero)
+                            (fn [hneg]
+                              (rewrite-q #(lt zero %) (neg p) (abs p)
+                                         (symm-q (abs p) (neg p) (t/app (c "abs_of_neg") p hneg))
+                                         (t/app (c "neg_pos_of_neg") p hneg))))
+                     (t/lam "hrest" (t/or' E (lt zero p))
+                            (fn [hrest]
+                              (t/or-elim E (lt zero p) goal hrest
+                                         (t/lam "he" E #(t/absurd' E goal % hne))
+                                         (t/lam "hpos" (lt zero p)
+                                                (fn [hpos]
+                                                  (rewrite-q #(lt zero %) p (abs p)
+                                                             (symm-q (abs p) p (t/app (c "abs_of_pos") p hpos))
+                                                             hpos))))))))))
+    (theorem! "abs_inv"
+      (t/forall [[p Q]] (implies (ne-zero p) (eq-q (abs (inv p)) (inv (abs p)))))
+      (t/lambda [[p Q] [hne (ne-zero p)]]
+        (let [ap (abs p)
+              ap-ne (t/lam "h0" (eq-q ap zero)
+                           #(t/app (c "ne_of_lt") zero ap (t/app (c "abs_pos_of_ne_zero") p hne)
+                                   (symm-q ap zero %)))
+              prod (chain (step (mul ap (abs (inv p))) (abs (mul p (inv p)))
+                                (symm-q (abs (mul p (inv p))) (mul ap (abs (inv p)))
+                                        (t/app (c "abs_mul") p (inv p))))
+                          (step (abs (mul p (inv p))) (abs one)
+                                (t/app (k/const "congrArg" l1 l1) Q Q (mul p (inv p)) one (c "abs")
+                                       (t/app (c "mul_inv_cancel") p hne)))
+                          (step (abs one) one (c "abs_one")))]
+          (symm-q (inv ap) (abs (inv p))
+                  (t/app (c "inv_eq_of_mul_eq_one") ap (abs (inv p)) ap-ne prod)))))
+    ;; inverses reverse strict order on positives
+    (theorem! "inv_lt_inv_of_lt"
+      (t/forall [[p Q] [q Q]] (implies (lt zero p) (lt p q) (lt (inv q) (inv p))))
+      (t/lambda [[p Q] [q Q] [hp (lt zero p)] [h (lt p q)]]
+        (let [ip (inv p) iq (inv q)
+              hq (t/app (c "lt_trans") zero p q hp h)
+              hip (t/app (c "inv_pos") p hp) hiq (t/app (c "inv_pos") q hq)
+              k (mul ip iq)
+              hk (t/app (c "mul_pos") ip iq hip hiq)
+              p-ne (t/lam "h0" (eq-q p zero) #(t/app (c "ne_of_lt") zero p hp (symm-q p zero %)))
+              q-ne (t/lam "h0" (eq-q q zero) #(t/app (c "ne_of_lt") zero q hq (symm-q q zero %)))
+              ;; k·p = q⁻¹ and k·q = p⁻¹
+              kp (chain (step (mul k p) (mul (mul iq ip) p)
+                             (t/app (c "mul_congr_fst") p k (mul iq ip)
+                                     (t/app (c "mul_comm") ip iq)))
+                        (step (mul (mul iq ip) p) (mul iq (mul ip p)) (t/app (c "mul_assoc") iq ip p))
+                        (step (mul iq (mul ip p)) (mul iq one)
+                              (t/app (c "mul_congr_snd") iq (mul ip p) one
+                                     (t/app (c "inv_mul_cancel") p p-ne)))
+                        (step (mul iq one) iq (t/app (c "mul_one") iq)))
+              kq (chain (step (mul k q) (mul ip (mul iq q)) (t/app (c "mul_assoc") ip iq q))
+                        (step (mul ip (mul iq q)) (mul ip one)
+                              (t/app (c "mul_congr_snd") ip (mul iq q) one
+                                     (t/app (c "inv_mul_cancel") q q-ne)))
+                        (step (mul ip one) ip (t/app (c "mul_one") ip)))
+              scaled (t/app (c "mul_lt_mul_of_pos_left") p q k h hk)]
+          (rewrite-q #(lt % ip) (mul k p) iq kp
+                     (rewrite-q #(lt (mul k p) %) (mul k q) ip kq scaled)))))
+    ;; a⁻¹ − b⁻¹ = a⁻¹·(b⁻¹·(b − a))
+    (theorem! "inv_sub_inv"
+      (t/forall [[p Q] [q Q]]
+        (implies (ne-zero p) (ne-zero q)
+                 (eq-q (sub (inv p) (inv q)) (mul (inv p) (mul (inv q) (sub q p))))))
+      (t/lambda [[p Q] [q Q] [hp (ne-zero p)] [hq (ne-zero q)]]
+        (let [ip (inv p) iq (inv q)
+              ;; q⁻¹·(q·p⁻¹) = p⁻¹ and q⁻¹·(p·p⁻¹) = q⁻¹
+              e1 (chain (step (mul iq (mul q ip)) (mul q (mul iq ip)) (t/app (c "mul_left_comm") iq q ip))
+                        (step (mul q (mul iq ip)) (mul (mul q iq) ip)
+                              (symm-q (mul (mul q iq) ip) (mul q (mul iq ip)) (t/app (c "mul_assoc") q iq ip)))
+                        (step (mul (mul q iq) ip) (mul one ip)
+                              (t/app (c "mul_congr_fst") ip (mul q iq) one (t/app (c "mul_inv_cancel") q hq)))
+                        (step (mul one ip) ip (t/app (c "one_mul") ip)))
+              e2 (chain (step (mul iq (mul p ip)) (mul p (mul iq ip)) (t/app (c "mul_left_comm") iq p ip))
+                        (step (mul p (mul iq ip)) (mul p (mul ip iq))
+                              (t/app (c "mul_congr_snd") p (mul iq ip) (mul ip iq) (t/app (c "mul_comm") iq ip)))
+                        (step (mul p (mul ip iq)) (mul (mul p ip) iq)
+                              (symm-q (mul (mul p ip) iq) (mul p (mul ip iq)) (t/app (c "mul_assoc") p ip iq)))
+                        (step (mul (mul p ip) iq) (mul one iq)
+                              (t/app (c "mul_congr_fst") iq (mul p ip) one (t/app (c "mul_inv_cancel") p hp)))
+                        (step (mul one iq) iq (t/app (c "one_mul") iq)))]
+          (symm-q (mul ip (mul iq (sub q p))) (sub ip iq)
+                  (chain (step (mul ip (mul iq (sub q p))) (mul iq (mul ip (sub q p)))
+                               (t/app (c "mul_left_comm") ip iq (sub q p)))
+                         (step (mul iq (mul ip (sub q p))) (mul iq (sub (mul q ip) (mul p ip)))
+                               (t/app (c "mul_congr_snd") iq (mul ip (sub q p)) (sub (mul q ip) (mul p ip))
+                                      (chain (step (mul ip (sub q p)) (mul (sub q p) ip)
+                                                   (t/app (c "mul_comm") ip (sub q p)))
+                                             (step (mul (sub q p) ip) (sub (mul q ip) (mul p ip))
+                                                   (t/app (c "sub_mul") q p ip)))))
+                         (step (mul iq (sub (mul q ip) (mul p ip)))
+                               (sub (mul iq (mul q ip)) (mul iq (mul p ip)))
+                               (t/app (c "left_distrib_sub") iq (mul q ip) (mul p ip)))
+                         (step (sub (mul iq (mul q ip)) (mul iq (mul p ip))) (sub ip (mul iq (mul p ip)))
+                               (t/app (c "sub_congr_fst") (mul iq (mul p ip)) (mul iq (mul q ip)) ip e1))
+                         (step (sub ip (mul iq (mul p ip))) (sub ip iq)
+                               (t/app (c "sub_congr_snd") ip (mul iq (mul p ip)) iq e2)))))))
+    (theorem! "inv_mul_mul"
+      (t/forall [[p Q] [e Q]] (implies (lt zero p) (eq-q (mul (inv p) (mul p e)) e)))
+      (t/lambda [[p Q] [e Q] [h (lt zero p)]]
+        (let [ip (inv p)
+              p-ne (t/lam "h0" (eq-q p zero) #(t/app (c "ne_of_lt") zero p h (symm-q p zero %)))]
+          (chain (step (mul ip (mul p e)) (mul (mul ip p) e)
+                       (symm-q (mul (mul ip p) e) (mul ip (mul p e)) (t/app (c "mul_assoc") ip p e)))
+                 (step (mul (mul ip p) e) (mul one e)
+                       (t/app (c "mul_congr_fst") e (mul ip p) one
+                                     (t/app (c "inv_mul_cancel") p p-ne)))
+                 (step (mul one e) e (t/app (c "one_mul") e))))))
+    (theorem! "ne_zero_of_lt_abs"
+      (t/forall [[d Q] [p Q]] (implies (lt zero d) (lt d (abs p)) (ne-zero p)))
+      (t/lambda [[d Q] [p Q] [hd (lt zero d)] [h (lt d (abs p))] [h0 (eq-q p zero)]]
+        (t/app (c "lt_irrefl") d
+               (t/app (c "lt_trans") d zero d
+                      (rewrite-q #(lt d %) (abs p) zero
+                                 (chain (step (abs p) (abs zero) (t/app (c "abs_congr") p zero h0))
+                                        (step (abs zero) zero (c "abs_zero")))
+                                 h)
+                      hd))))
+    ;; |a⁻¹| < d⁻¹ whenever 0 < d < |a|
+    (theorem! "abs_inv_lt"
+      (t/forall [[d Q] [p Q]] (implies (lt zero d) (lt d (abs p)) (lt (abs (inv p)) (inv d))))
+      (t/lambda [[d Q] [p Q] [hd (lt zero d)] [h (lt d (abs p))]]
+        (let [p-ne (t/lam "h0" (eq-q p zero)
+                          (fn [h0]
+                            (t/app (c "lt_irrefl") d
+                                   (t/app (c "lt_trans") d zero d
+                                          (rewrite-q #(lt d %) (abs p) zero
+                                                     (chain (step (abs p) (abs zero)
+                                                                  (t/app (k/const "congrArg" l1 l1) Q Q p zero (c "abs") h0))
+                                                            (step (abs zero) zero (c "abs_zero")))
+                                                     h)
+                                          hd))))]
+          (rewrite-q #(lt % (inv d)) (inv (abs p)) (abs (inv p))
+                     (symm-q (abs (inv p)) (inv (abs p)) (t/app (c "abs_inv") p p-ne))
+                     (t/app (c "inv_lt_inv_of_lt") d (abs p) hd h)))))))
+
+(defn- install-inv-estimate! []
+  (let [step q-eq-map
+        chain (fn [& maps] (:term (apply k/trans maps)))
+        symm-q (fn [x y e] (t/app (k/const "Eq.symm" l1) Q x y e))]
+    ;; the Cauchy estimate for inverses: |a⁻¹ − b⁻¹| = |a⁻¹|·(|b⁻¹|·|b − a|) < e
+    (theorem! "dist_inv_lt"
+      (t/forall [[d Q] [a Q] [b Q] [e Q]]
+        (implies (lt zero d) (lt d (abs a)) (lt d (abs b)) (lt (abs (sub a b)) (mul d (mul d e)))
+                 (lt (abs (sub (inv a) (inv b))) e)))
+      (t/lambda [[d Q] [a Q] [b Q] [e Q]
+                 [hd (lt zero d)] [ha (lt d (abs a))] [hb (lt d (abs b))]
+                 [hab (lt (abs (sub a b)) (mul d (mul d e)))]]
+        (let [ia (inv a) ib (inv b) id (inv d)
+              aa (abs ia) ab (abs ib) ba (abs (sub b a))
+              a-ne (t/app (c "ne_zero_of_lt_abs") d a hd ha)
+              b-ne (t/app (c "ne_zero_of_lt_abs") d b hd hb)
+              ;; |a⁻¹ − b⁻¹| = |a⁻¹|·(|b⁻¹|·|b − a|)
+              eq1 (chain (step (abs (sub ia ib)) (abs (mul ia (mul ib (sub b a))))
+                               (t/app (c "abs_congr") (sub ia ib) (mul ia (mul ib (sub b a)))
+                                      (t/app (c "inv_sub_inv") a b a-ne b-ne)))
+                         (step (abs (mul ia (mul ib (sub b a)))) (mul aa (abs (mul ib (sub b a))))
+                               (t/app (c "abs_mul") ia (mul ib (sub b a))))
+                         (step (mul aa (abs (mul ib (sub b a)))) (mul aa (mul ab ba))
+                               (t/app (c "mul_congr_snd") aa (abs (mul ib (sub b a))) (mul ab ba)
+                                      (t/app (c "abs_mul") ib (sub b a)))))
+              hba (rewrite-q #(lt % (mul d (mul d e))) (abs (sub a b)) ba
+                             (t/app (c "abs_sub_comm") a b) hab)
+              h2 (t/app (c "mul_lt_of_lt_of_lt") ab id ba (mul d (mul d e))
+                        (t/app (c "abs_nonneg") ib) (t/app (c "abs_inv_lt") d b hd hb)
+                        (t/app (c "abs_nonneg") (sub b a)) hba)
+              h2' (rewrite-q #(lt (mul ab ba) %) (mul id (mul d (mul d e))) (mul d e)
+                             (t/app (c "inv_mul_mul") d (mul d e) hd) h2)
+              h3 (t/app (c "mul_lt_of_lt_of_lt") aa id (mul ab ba) (mul d e)
+                        (t/app (c "abs_nonneg") ia) (t/app (c "abs_inv_lt") d a hd ha)
+                        (t/app (c "mul_nonneg") ab ba (t/app (c "abs_nonneg") ib) (t/app (c "abs_nonneg") (sub b a)))
+                        h2')
+              h3' (rewrite-q #(lt (mul aa (mul ab ba)) %) (mul id (mul d e)) e
+                             (t/app (c "inv_mul_mul") d e hd) h3)]
+          (rewrite-q #(lt % e) (mul aa (mul ab ba)) (abs (sub ia ib))
+                     (symm-q (abs (sub ia ib)) (mul aa (mul ab ba)) eq1)
+                     h3'))))))
+
 (defn install!
   "Installs ℚ as an ordered commutative ring with absolute value, the
   Archimedean property and halving. Idempotent."
@@ -923,5 +1173,7 @@
     (install-field!)
     (install-metric!)
     (install-mul-order!)
-    (install-order-extras!))
+    (install-order-extras!)
+    (install-inv-laws!)
+    (install-inv-estimate!))
   :installed)

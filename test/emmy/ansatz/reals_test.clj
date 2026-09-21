@@ -23,11 +23,13 @@
    "apart_of_ne" "pos_or_neg_of_apart" "neg_sub" "sub_add_cancel" "eq_of_sub_eq_zero"
    "lt_trichotomy"
    ;; Archimedean
-   "sub_zero" "archimedean" "zero_lt_ofQ"])
+   "sub_zero" "archimedean" "zero_lt_ofQ"
+   ;; inverse
+   "apart_congr" "inv_cauchy" "inv_congr" "mul_inv_cancel"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"
-   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart" "ofInt"])
+   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart" "ofInt" "invSeq" "cinv" "inv"])
 
 (deftest cauchy-reals
   (is (= :installed (r/install!)))
