@@ -18,11 +18,14 @@
    ;; order
    "pos_congr" "pos_add" "sub_add_sub" "add_sub_add_left" "ofQ_sub" "positive_add"
    "not_positive_zero" "lt_irrefl" "lt_trans" "add_lt_add_left" "le_refl" "le_of_lt"
-   "positive_ofQ" "ofQ_lt" "lt_ofQ"])
+   "positive_ofQ" "ofQ_lt" "lt_ofQ"
+   ;; apartness and trichotomy
+   "apart_of_ne" "pos_or_neg_of_apart" "neg_sub" "sub_add_cancel" "eq_of_sub_eq_zero"
+   "lt_trichotomy"])
 
 (def ^:private definitions
   ["Cauchy" "CSeq" "Equiv" "R" "constSeq" "ofQ" "addSeq" "negSeq" "cadd" "cneg"
-   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le"])
+   "add" "neg" "sub" "zero" "one" "mulSeq" "cmul" "mul" "Pos" "Positive" "lt" "le" "Apart"])
 
 (deftest cauchy-reals
   (is (= :installed (r/install!)))

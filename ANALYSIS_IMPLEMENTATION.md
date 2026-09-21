@@ -121,6 +121,13 @@ with `x < y := Positive (y − x)` and `x ≤ y := x < y ∨ x = y`. Proved:
 `positive_add`, `not_positive_zero`, `lt_irrefl`, `lt_trans`, `add_lt_add_left`,
 `le_refl`, `le_of_lt`, and the order embedding `ofQ_lt` / `lt_ofQ`.
 
+Apartness and trichotomy (M3): `apart_of_ne` shows that a Cauchy sequence not
+equivalent to zero is eventually bounded away from zero, by `Classical.byCases`
+on that bound — the one classical step of the construction. Such a sequence
+keeps a fixed sign past the Cauchy threshold (`pos_or_neg_of_apart`), which
+gives `lt_trichotomy : x < y ∨ x = y ∨ y < x` on `R`, with
+`eq_of_sub_eq_zero`.
+
 Supporting `Q` lemmas: metric (`sub_self`, `abs_sub_comm`, `dist_triangle`,
 `dist_add_le`, `dist_neg`, `add_lt_add`, `half_pos_of_pos`) and multiplicative
 order (`mul_lt_mul_of_pos_left`, `mul_le_mul_of_nonneg_left`,

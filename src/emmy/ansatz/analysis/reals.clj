@@ -703,6 +703,226 @@
                              (t/app (qc "lt_trans") q/zero e (q/sub u p) he
                                     (t/app hN N (t/app (k/const "Nat.le_refl") N))))))))))
 
+;; ## Apartness from zero
+;;
+;; A Cauchy sequence that is not equivalent to the zero sequence is eventually
+;; bounded away from zero. This is the one classical step in the construction
+;; (`Classical.byCases`); it is what an inverse and trichotomy rest on.
+
+(defn- by-cases
+  "Proof of `goal` from `pos-case : p → goal` and `neg-case : ¬p → goal`."
+  [p goal pos-case neg-case]
+  (t/app (k/const "Classical.byCases") p goal pos-case neg-case))
+
+(defn- apart-body
+  "`∃ δ, 0 < δ ∧ ∃ N, ∀ n ≥ N, δ < |s n|`."
+  [f]
+  (t/exists' Q (t/lambda [[d Q]]
+                 (t/and' (pos d)
+                         (t/exists' Nat (t/lambda [[N Nat]]
+                                          (t/forall [[n Nat]]
+                                            (t/arrow (nat-le N n) (q/lt d (q/abs (t/app f n)))))))))))
+
+(defn- install-apart! []
+  (let [czero (cconst q/zero)
+        tail (fn [f d] (t/exists' Nat (t/lambda [[N Nat]]
+                                        (t/forall [[n Nat]]
+                                          (t/arrow (nat-le N n) (q/lt d (q/abs (t/app f n))))))))
+        apart-intro (fn [f d N hp hall]
+                      (t/exists-intro Q (t/lambda [[d' Q]] (t/and' (pos d') (tail f d'))) d
+                                      (t/and-intro (pos d) (tail f d) hp
+                                                   (t/exists-intro Nat
+                                                                   (t/lambda [[M Nat]]
+                                                                     (t/forall [[n Nat]]
+                                                                       (t/arrow (nat-le M n) (q/lt d (q/abs (t/app f n))))))
+                                                                   N hall))))]
+    (define! "Apart" (t/arrow CSeq t/prop) (t/lambda [[s CSeq]] (apart-body (val' s))))
+    (theorem! "apart_of_ne"
+      (t/forall [[s CSeq]] (implies (t/not' (equiv s czero)) (t/app (c "Apart") s)))
+      (t/lambda [[s CSeq] [hne (t/not' (equiv s czero))]]
+        (let [f (val' s)
+              A (apart-body f)]
+          (by-cases A A
+                    (t/lam "h" A identity)
+                    ;; if s is nowhere bounded away from zero it converges to zero
+                    (t/lam "hnA" (t/not' A)
+                           (fn [hnA]
+                             (t/false-elim A
+                                    (t/app hne
+                                           (t/lambda [[eps Q] [he (pos eps)]]
+                                             (let [e2 (q/mul q/half eps)
+                                                   he2 (t/app (qc "half_pos_of_pos") eps he)
+                                                   P #(q/lt (dist (at s %) (at czero %)) eps)]
+                                               (cauchy-elim f e2 (eventually P) (t/app (cauchy-of s) e2 he2)
+                                                            (fn [N hN]
+                                                              (eventually-intro P N
+                                                                                (t/lambda [[n Nat] [hn (nat-le N n)]]
+                                                                                  (let [an (q/abs (t/app f n))
+                                                                                        goal (q/lt (dist (at s n) (at czero n)) eps)
+                                                                                        ;; |s n − 0| = |s n|
+                                                                                        shift (fn [prf]
+                                                                                                (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt (q/abs z) eps))
+                                                                                                                (t/app f n) (q/sub (t/app f n) q/zero)
+                                                                                                                (t/app (k/const "Eq.symm" l1) Q
+                                                                                                                       (q/sub (t/app f n) q/zero) (t/app f n)
+                                                                                                                       (t/app (qc "sub_zero") (t/app f n)))
+                                                                                                                prf))]
+                                                                    (by-cases (q/le eps an) goal
+                                                                              ;; ε ≤ |s n| makes ε/2 a lower bound past N
+                                                                              (t/lam "hge" (q/le eps an)
+                                                                                     (fn [hge]
+                                                                                       (t/false-elim goal
+                                                                                              (t/app hnA
+                                                                                                     (apart-intro f e2 N he2
+                                                                                                                  (t/lambda [[m Nat] [hm (nat-le N m)]]
+                                                                                                                    (t/app (qc "half_lt_abs") eps (t/app f n) (t/app f m)
+                                                                                                                           hge (t/app hN n m hn hm))))))))
+                                                                              (t/lam "hlt" (t/not' (q/le eps an))
+                                                                                     #(shift (t/app (qc "lt_of_not_le") an eps %)))))))))))))))))))))
+
+;; ## Trichotomy
+;;
+;; An apart sequence keeps a constant sign past the Cauchy threshold, so it is
+;; eventually positive or eventually negative; on `R` that is trichotomy.
+
+(defn- install-trichotomy! []
+  (let [Pos #(t/app (c "Pos") %)
+        cneg' #(t/app (c "cneg") %)]
+    (theorem! "pos_or_neg_of_apart"
+      (t/forall [[s CSeq]] (implies (t/app (c "Apart") s) (t/or' (Pos s) (Pos (cneg' s)))))
+      (t/lambda [[s CSeq] [ha (t/app (c "Apart") s)]]
+        (let [f (val' s)
+              goal (t/or' (Pos s) (Pos (cneg' s)))
+              tail (fn [d] (t/exists' Nat (t/lambda [[N Nat]]
+                                            (t/forall [[n Nat]]
+                                              (t/arrow (nat-le N n) (q/lt d (q/abs (t/app f n))))))))
+              body (fn [d] (t/and' (pos d) (tail d)))]
+          (t/exists-elim Q (t/lambda [[d Q]] (body d)) goal ha
+                         (t/lambda [[d Q] [hd (body d)]]
+                           (let [hdpos (t/and-left (pos d) (tail d) hd)]
+                             (t/exists-elim Nat (t/lambda [[N Nat]]
+                                                  (t/forall [[n Nat]]
+                                                    (t/arrow (nat-le N n) (q/lt d (q/abs (t/app f n))))))
+                                            goal (t/and-right (pos d) (tail d) hd)
+                                            (t/lambda [[N1 Nat] [hN1 (t/forall [[n Nat]]
+                                                                       (t/arrow (nat-le N1 n) (q/lt d (q/abs (t/app f n)))))]]
+                                              (cauchy-elim f d goal (t/app (cauchy-of s) d hdpos)
+                                                           (fn [N2 hN2]
+                                                             (let [n0 (nat-add N1 N2)
+                                                                   [h01 h02] (threshold-le N1 N2 n0 (t/app (k/const "Nat.le_refl") n0))
+                                                                   x0 (t/app f n0)
+                                                                   habs (t/app hN1 n0 h01)
+                                                                   E (k/eq-at Q l1 x0 q/zero)]
+                                                               ;; the sign of s at the threshold decides the sign of the tail
+                                                               (t/or-elim (q/lt x0 q/zero) (t/or' E (q/lt q/zero x0)) goal
+                                                                          (t/app (qc "lt_trichotomy") x0 q/zero)
+                                                                          ;; negative: −s is eventually above (−s n₀) − δ
+                                                                          (t/lam "hneg" (q/lt x0 q/zero)
+                                                                                 (fn [hneg]
+                                                                                   (let [y0 (q/neg x0)
+                                                                                         hy0 (t/app (qc "neg_pos_of_neg") x0 hneg)
+                                                                                         hd0 (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt d z)) (q/abs x0) y0
+                                                                                                             (t/app (k/const "Eq.symm" l1) Q y0 (q/abs x0)
+                                                                                                                    (t/app (k/const "Eq.trans" l1) Q y0 (q/abs y0) (q/abs x0)
+                                                                                                                           (t/app (k/const "Eq.symm" l1) Q (q/abs y0) y0
+                                                                                                                                  (t/app (qc "abs_of_pos") y0 hy0))
+                                                                                                                           (t/app (qc "abs_neg") x0)))
+                                                                                                             habs)]
+                                                                                     (t/or-inr (Pos s) (Pos (cneg' s))
+                                                                                               (pos-intro (val' (cneg' s)) (q/sub y0 d) n0
+                                                                                                          (t/app (qc "sub_pos_of_lt") d y0 hd0)
+                                                                                                          (t/lambda [[n Nat] [hn (nat-le n0 n)]]
+                                                                                                            (let [[_hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                                                              (t/app (qc "sub_lt_of_dist_lt") y0 (q/neg (t/app f n)) d
+                                                                                                                     (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt z d))
+                                                                                                                                     (q/abs (q/sub x0 (t/app f n)))
+                                                                                                                                     (q/abs (q/sub y0 (q/neg (t/app f n))))
+                                                                                                                                     (t/app (k/const "Eq.symm" l1) Q
+                                                                                                                                            (q/abs (q/sub y0 (q/neg (t/app f n))))
+                                                                                                                                            (q/abs (q/sub x0 (t/app f n)))
+                                                                                                                                            (t/app (qc "dist_neg") x0 (t/app f n)))
+                                                                                                                                     (t/app hN2 n0 n h02 hn2))))))))))
+                                                                          (t/lam "hrest" (t/or' E (q/lt q/zero x0))
+                                                                                 (fn [hrest]
+                                                                                   (t/or-elim E (q/lt q/zero x0) goal hrest
+                                                                                              ;; zero at the threshold contradicts δ < |s n₀|
+                                                                                              (t/lam "he" E
+                                                                                                     (fn [he]
+                                                                                                       (t/false-elim goal
+                                                                                                                     (t/app (qc "lt_irrefl") q/zero
+                                                                                                                            (t/app (qc "lt_trans") q/zero d q/zero hdpos
+                                                                                                                                   (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt d z))
+                                                                                                                                                   (q/abs x0) q/zero
+                                                                                                                                                   (t/app (k/const "Eq.trans" l1) Q (q/abs x0) (q/abs q/zero) q/zero
+                                                                                                                                                          (t/app (k/const "congrArg" l1 l1) Q Q x0 q/zero (qc "abs") he)
+                                                                                                                                                          (qc "abs_zero"))
+                                                                                                                                                   habs))))))
+                                                                                              ;; positive: s is eventually above s n₀ − δ
+                                                                                              (t/lam "hpos" (q/lt q/zero x0)
+                                                                                                     (fn [hpos]
+                                                                                                       (let [hd0 (t/transport-at Q l1 (t/lambda [[z Q]] (q/lt d z)) (q/abs x0) x0
+                                                                                                                                 (t/app (qc "abs_of_pos") x0 hpos) habs)]
+                                                                                                         (t/or-inl (Pos s) (Pos (cneg' s))
+                                                                                                                   (pos-intro f (q/sub x0 d) n0
+                                                                                                                              (t/app (qc "sub_pos_of_lt") d x0 hd0)
+                                                                                                                              (t/lambda [[n Nat] [hn (nat-le n0 n)]]
+                                                                                                                                (let [[_hn1 hn2] (threshold-le N1 N2 n hn)]
+                                                                                                                                  (t/app (qc "sub_lt_of_dist_lt") x0 (t/app f n) d
+                                                                                                                                         (t/app hN2 n0 n h02 hn2))))))))))))))))))))))))
+    ;; R-level consequences
+    (r-law! "neg_sub" 2 #(neg (sub %1 %2)) #(sub %2 %1)
+            #(cneg (cadd %1 (cneg %2))) #(cadd %2 (cneg %1))
+            (fn [x y n] (t/app (qc "neg_sub") (at x n) (at y n))))
+    (r-law! "sub_add_cancel" 2 #(add (sub %1 %2) %2) (fn [x _] x)
+            #(cadd (cadd %1 (cneg %2)) %2) (fn [x _] x)
+            (fn [x y n] (t/app (qc "sub_add_cancel") (at x n) (at y n))))
+    (theorem! "eq_of_sub_eq_zero"
+      (t/forall [[x R] [y R]] (implies (eq-r (sub y x) zero) (eq-r x y)))
+      (t/lambda [[x R] [y R] [h (eq-r (sub y x) zero)]]
+        ;; y = (y − x) + x = 0 + x = x
+        (let [step1 (t/app (k/const "congrArg" l1 l1) R R (sub y x) zero (t/lambda [[z R]] (add z x)) h)
+              step2 (t/app (c "sub_add_cancel") y x)
+              step3 (t/app (c "zero_add") x)]
+          (t/app (k/const "Eq.symm" l1) R y x
+                 (t/app (k/const "Eq.trans" l1) R y (add zero x) x
+                        (t/app (k/const "Eq.trans" l1) R y (add (sub y x) x) (add zero x)
+                               (t/app (k/const "Eq.symm" l1) R (add (sub y x) x) y step2)
+                               step1)
+                        step3)))))
+    (theorem! "lt_trichotomy"
+      (t/forall [[x R] [y R]] (t/or' (lt x y) (t/or' (eq-r x y) (lt y x))))
+      (q/lams ["x" "y"] R
+              (fn [xs]
+                (t/quot-ind-all* qconf xs
+                                 (fn [& ys] (let [[x y] ys] (t/or' (lt x y) (t/or' (eq-r x y) (lt y x)))))
+                                 (fn [[a b]]
+                                   (let [x (t/quot-mk CSeq (c "Equiv") a) y (t/quot-mk CSeq (c "Equiv") b)
+                                         goal (t/or' (lt x y) (t/or' (eq-r x y) (lt y x)))
+                                         dseq (cadd b (cneg a))
+                                         czero (cconst q/zero)]
+                                     (by-cases (equiv dseq czero) goal
+                                               ;; y − x ≈ 0 makes x and y equal
+                                               (t/lam "he" (equiv dseq czero)
+                                                      (fn [he]
+                                                        (t/or-inr (lt x y) (t/or' (eq-r x y) (lt y x))
+                                                                  (t/or-inl (eq-r x y) (lt y x)
+                                                                            (t/app (c "eq_of_sub_eq_zero") x y
+                                                                                   (t/quot-sound CSeq (c "Equiv") dseq czero he))))))
+                                               (t/lam "hne" (t/not' (equiv dseq czero))
+                                                      (fn [hne]
+                                                        (t/or-elim (Pos dseq) (Pos (cneg' dseq)) goal
+                                                                   (t/app (c "pos_or_neg_of_apart") dseq
+                                                                          (t/app (c "apart_of_ne") dseq hne))
+                                                                   (t/lam "hp" (Pos dseq)
+                                                                          #(t/or-inl (lt x y) (t/or' (eq-r x y) (lt y x)) %))
+                                                                   (t/lam "hn" (Pos (cneg' dseq))
+                                                                          (fn [hn]
+                                                                            (t/or-inr (lt x y) (t/or' (eq-r x y) (lt y x))
+                                                                                      (t/or-inr (eq-r x y) (lt y x)
+                                                                                                (t/transport-at R l1 (t/lambda [[z R]] (positive z))
+                                                                                                                (neg (sub y x)) (sub x y)
+                                                                                                                (t/app (c "neg_sub") y x) hn)))))))))))))))))
+
 ;; ## Installation
 
 (defn install!
@@ -790,5 +1010,7 @@
     (install-mul!)
     (install-ring-laws!)
     (install-order!)
-    (install-order-laws!))
+    (install-order-laws!)
+    (install-apart!)
+    (install-trichotomy!))
   :installed)

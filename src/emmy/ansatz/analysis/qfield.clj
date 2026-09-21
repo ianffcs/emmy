@@ -801,6 +801,61 @@
     (t/lambda [[p Q] [q Q] [h (lt p q)]]
       (rewrite-q #(lt % (sub q p)) (add p (neg p)) zero (t/app (c "add_right_neg") p)
                  (t/app (c "add_lt_add_right") p q (neg p) h))))
+  (quot-law! "sub_zero" 1 #(sub % zero) identity #(radd % (rneg rzero)) identity)
+  (quot-law! "add_sub_cancel_right" 2 #(sub (add %1 %2) %2) (fn [p _] p)
+             #(radd (radd %1 %2) (rneg %2)) (fn [a _] a))
+  (theorem! "lt_of_not_le"
+    (t/forall [[p Q] [q Q]] (implies (t/not' (le q p)) (lt p q)))
+    (t/lambda [[p Q] [q Q] [h (t/not' (le q p))]]
+      (let [goal (lt p q)
+            E (k/eq-at Q l1 p q)]
+        (t/or-elim (lt p q) (t/or' E (lt q p)) goal
+                   (t/app (c "lt_trichotomy") p q)
+                   (t/lam "h1" (lt p q) identity)
+                   (t/lam "h2" (t/or' E (lt q p))
+                          (fn [h2]
+                            (t/or-elim E (lt q p) goal h2
+                                       (t/lam "e" E
+                                              (fn [e]
+                                                (t/absurd' (le q p) goal
+                                                           (rewrite-q #(le % p) p q e (t/app (c "le_refl") p)) h)))
+                                       (t/lam "g" (lt q p)
+                                              #(t/absurd' (le q p) goal (t/app (c "le_of_lt") q p %) h)))))))))
+  (q-theorem! "abs_of_pos" 1 (fn [[p]] (implies (lt zero p) (eq-q (abs p) p)))
+    (fn [[a]]
+      (let [hyp (rel-prop o/lt rzero (leaf a))]
+        (t/lam "h" hyp
+               (fn [h]
+                 (let [pn (o/by-omega (o/lt k/zero (rnum a)) [[hyp h]])]
+                   (sound (t/app (c "repAbs") a) a
+                          (:term (k/congr-mul (abs-pos-map (rnum a) pn) (k/refl (rden a)))))))))))
+  (theorem! "neg_pos_of_neg"
+    (t/forall [[p Q]] (implies (lt p zero) (lt zero (neg p))))
+    (t/lambda [[p Q] [h (lt p zero)]]
+      (let [h1 (t/app (c "add_lt_add_right") p zero (neg p) h)
+            h2 (rewrite-q #(lt % (add zero (neg p))) (add p (neg p)) zero (t/app (c "add_right_neg") p) h1)]
+        (rewrite-q #(lt zero %) (add zero (neg p)) (neg p) (t/app (c "zero_add") (neg p)) h2))))
+  ;; |a − b| < d keeps b above a − d
+  (theorem! "sub_lt_of_dist_lt"
+    (t/forall [[a Q] [b Q] [d Q]] (implies (lt (abs (sub a b)) d) (lt (sub a d) b)))
+    (t/lambda [[a Q] [b Q] [d Q] [h (lt (abs (sub a b)) d)]]
+      (let [h1 (t/app (c "lt_of_le_of_lt") (sub a b) (abs (sub a b)) d (t/app (c "le_abs") (sub a b)) h)
+            h2 (t/app (c "add_lt_add_right") (sub a b) d (sub b d) h1)
+            h3 (rewrite-q #(lt % (add d (sub b d))) (add (sub a b) (sub b d)) (sub a d)
+                          (t/app (c "sub_add_sub") a b d) h2)]
+        (rewrite-q #(lt (sub a d) %) (add d (sub b d)) b (t/app (c "add_sub_cancel") b d) h3))))
+  ;; e ≤ |x| and |x − y| < e/2 keep |y| above e/2
+  (theorem! "half_lt_abs"
+    (t/forall [[e Q] [x Q] [y Q]]
+      (implies (le e (abs x)) (lt (abs (sub x y)) (mul half e)) (lt (mul half e) (abs y))))
+    (t/lambda [[e Q] [x Q] [y Q] [hx (le e (abs x))] [hxy (lt (abs (sub x y)) (mul half e))]]
+      (let [he (mul half e) ay (abs y) d (abs (sub x y))
+            h1 (t/app (c "le_trans") e (abs x) (add ay d) hx (t/app (c "abs_le_add_dist") x y))
+            h2 (t/app (c "lt_of_le_of_lt") e (add ay d) (add ay he) h1
+                      (t/app (c "add_lt_add_left") d he ay hxy))
+            h3 (t/app (c "add_lt_add_right") e (add ay he) (neg he) h2)
+            h4 (rewrite-q #(lt % (add (add ay he) (neg he))) (sub e he) he (t/app (c "sub_half") e) h3)]
+        (rewrite-q #(lt he %) (add (add ay he) (neg he)) ay (t/app (c "add_sub_cancel_right") ay he) h4))))
   ;; ε < a and |a − b| < ε/2 keep b above ε/2
   (theorem! "close_lower"
     (t/forall [[e Q] [a Q] [b Q]]

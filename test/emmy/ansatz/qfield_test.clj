@@ -27,7 +27,9 @@
    "mul_sub_mul" "dist_mul_le" "mul_lt_of_lt_of_lt" "mul_inv_mul"
    ;; order extras
    "le_abs" "add_lt_add_right" "sub_half" "add_pos" "add_right_neg" "sub_add_cancel"
-   "add_sub_add_left" "half_lt_self" "lt_of_sub_pos" "sub_pos_of_lt" "close_lower"])
+   "add_sub_add_left" "half_lt_self" "lt_of_sub_pos" "sub_pos_of_lt" "close_lower"
+   "sub_zero" "add_sub_cancel_right" "lt_of_not_le" "half_lt_abs" "abs_of_pos"
+   "neg_pos_of_neg" "sub_lt_of_dist_lt"])
 
 (deftest ordered-field-theorems
   (is (= :installed (q/install!)))
