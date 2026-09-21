@@ -71,6 +71,20 @@
               (list step form)))
           x forms))
 
+(defmacro >->
+  "Constructs a right-associative implication chain.
+
+  `(>-> A B C)` expands to `(arrow A (arrow B C))`; the final form is
+  the conclusion and every preceding form is a premise."
+  [& forms]
+  (when (< (count forms) 2)
+    (throw (IllegalArgumentException.
+            ">-> expects at least a premise and a conclusion")))
+  (reduce (fn [conclusion premise]
+            `(arrow ~premise ~conclusion))
+          (last forms)
+          (reverse (butlast forms))))
+
 (defn app [f & xs] (apply e/app* f xs))
 (defn predicate [a] (arrow a prop))
 (defn and' [a b] (app (k/const "And") a b))
