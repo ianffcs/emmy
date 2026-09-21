@@ -23,12 +23,23 @@
 (def ContinuousAt (k/const "Emmy.Analysis.R.ContinuousAt"))
 (def TendsToAt (k/const "Emmy.Analysis.R.TendsToAt"))
 
-(defn norm [x] (reals/abs x))
-(defn dist [x y] (reals/abs (reals/sub x y)))
-(defn has-deriv-at [f d x] (derivative/has-deriv-at f d x))
-(defn continuous-at [f x] (reals/continuous-at f x))
-(defn continuous [f] (reals/continuous f))
-(defn tends-to-at [f x L] (reals/tends-to-at f x L))
+(defn norm [x]
+  (reals/abs x))
+
+(defn dist [x y]
+  (reals/abs (reals/sub x y)))
+
+(defn has-deriv-at [f d x]
+  (derivative/has-deriv-at f d x))
+
+(defn continuous-at [f x]
+  (reals/continuous-at f x))
+
+(defn continuous [f]
+  (reals/continuous f))
+
+(defn tends-to-at [f x L]
+  (reals/tends-to-at f x L))
 (defn fderiv
   "One-dimensional Fréchet derivative selected by the derivative witness.
   This is a proposition-valued adapter; uniqueness is checked by the
@@ -36,8 +47,9 @@
   [f x d]
   (has-deriv-at f d x))
 (defn directional-deriv [f x v d]
-  (has-deriv-at (t/lam "s" Real #(t/app f (reals/add x (reals/mul % v)))) d
-                reals/zero))
+  (let [line (t/lam "s" Real
+                    #(t/app f (reals/add x (reals/mul % v))))]
+    (has-deriv-at line d reals/zero)))
 
 (defn- declare! [name type value]
   (when-not (k/installed? (str prefix name))
@@ -52,7 +64,9 @@
     (derivative/install!)
     (declare! "Real" t/type0 Real)
     (declare! "Rat" t/type0 Rat)
-    (declare! "Norm" (t/arrow Real Real) (t/lam "x" Real norm))
+    (declare! "Norm"
+              (t/arrow Real Real)
+              (t/lam "x" Real norm))
     (declare! "Dist" (t/arrow Real (t/arrow Real Real))
               (t/lam "x" Real #(t/lam "y" Real (fn [y] (dist % y)))))
     (declare! "MetricSpace" (t/arrow t/type0 t/prop)

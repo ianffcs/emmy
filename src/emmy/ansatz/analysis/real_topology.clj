@@ -18,10 +18,22 @@
 (def ^:private FnR (t/arrow R R))
 (defn- pos [x] (r/lt r/zero x))
 (defn- dist [x y] (r/abs (r/sub x y)))
-(defn ball "The open ball as a kernel predicate." [x eps] (t/app (c "Ball") x eps))
-(defn is-open "The epsilon-ball open-set predicate." [s] (t/app (c "IsOpen") s))
-(def real-space "The constructed real topology, after install!." (c "space"))
-(defn- preimage [f s] (t/lambda [[x R]] (t/app s (t/app f x))))
+(defn ball
+  "The open ball as a kernel predicate."
+  [x eps]
+  (t/app (c "Ball") x eps))
+
+(defn is-open
+  "The epsilon-ball open-set predicate."
+  [s]
+  (t/app (c "IsOpen") s))
+
+(def real-space
+  "The constructed real topology, after `install!`."
+  (c "space"))
+
+(defn- preimage [f s]
+  (t/lambda [[x R]] (t/app s (t/app f x))))
 (defn- local-body [s x d]
   (t/forall [[y R]] (t/arrow (r/lt (dist y x) d) (t/app s y))))
 (defn- local-predicate [s x]

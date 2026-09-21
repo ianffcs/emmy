@@ -13,9 +13,19 @@
 (def ^:private u (level/succ level/zero))
 (def ^:private prefix "Emmy.Analysis.Topology.")
 (defn- c [s] (k/const (str prefix s)))
-(defn space "The type of topologies on `a`." [a] (t/app (c "Space") a))
-(defn opens "The open-set predicate of a space." [a s] (t/app (c "IsOpen") a s))
-(defn continuous "Continuity by open inverse images." [a b sa sb f]
+(defn space
+  "The type of topologies on `a`."
+  [a]
+  (t/app (c "Space") a))
+
+(defn opens
+  "The open-set predicate of a space."
+  [a s]
+  (t/app (c "IsOpen") a s))
+
+(defn continuous
+  "Continuity by open inverse images."
+  [a b sa sb f]
   (t/app (c "Continuous") a b sa sb f))
 
 (defn- laws [a o]
