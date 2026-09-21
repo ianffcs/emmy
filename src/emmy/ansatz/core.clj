@@ -94,9 +94,51 @@
   (Object.))
 
 (defn env
-  "The current global Ansatz kernel environment, initializing it if needed."
+  "The current global Ansatz kernel environment, initializing it if needed.
+
+  Deprecated as a way to *read* the environment: thread a context from
+  [[base-ctx]] instead."
   []
   (ensure-init!))
+
+;; ## Environment context
+;;
+;; Kernel work is split into pure functions of a context map `{:env <Env>}` and
+;; two IO edges that connect a context to the process-global Ansatz
+;; environment: [[base-ctx]] (read) and [[commit!]] (write). Everything in
+;; between takes a context first and returns a new one, so environments can be
+;; built, inspected and thrown away without touching global state.
+
+(defn base-ctx
+  "IO edge (read). A context holding the current global environment, loading
+  the bundled `Init` tier first if needed."
+  []
+  {:env (ensure-init!)})
+
+(defn commit!
+  "IO edge (write). Runs the pure function `f` (context -> context) against the
+  current global environment and publishes the resulting environment. It is
+  all-or-nothing: if `f` throws, the global environment is unchanged. Returns
+  the new context.
+
+  The global environment is replaced under [[install-lock]] with a plain
+  `reset!`, rather than `swap!`, so an expensive `f` is never retried."
+  [f]
+  (ensure-init!)
+  (locking install-lock
+    (let [ctx (f {:env @a/ansatz-env})]
+      (reset! a/ansatz-env (:env ctx))
+      ctx)))
+
+(defn lookup
+  "The constant named `label` in the context's environment, or nil."
+  [{:keys [env]} label]
+  (env/lookup env (name/from-string (str label))))
+
+(defn verifies?
+  "True if the kernel accepts `proof` as a proof of `statement` in the context."
+  [{:keys [env]} statement proof]
+  (env/verifies? env statement proof))
 
 (defmacro quietly
   "Evaluates `body` with Ansatz's progress output suppressed."
@@ -104,9 +146,10 @@
   `(binding [a/*verbose* false] ~@body))
 
 (defn installed?
-  "True if the kernel environment has a constant named `s`."
-  [s]
-  (a/has-constant? (str s)))
+  "True if the environment has a constant named `label`. With one argument it
+  consults the global environment (deprecated); with a context it is pure."
+  ([label] (installed? (base-ctx) label))
+  ([ctx label] (some? (lookup ctx label))))
 
 ;; ## Constants
 

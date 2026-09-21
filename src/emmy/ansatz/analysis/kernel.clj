@@ -4,8 +4,7 @@
   "Typed term builders for the independent analysis library.
   Every new definition and theorem passes through check-constant. No axiom
   constructor or unchecked environment insertion is exposed here."
-  (:require [ansatz.core :as a]
-            [ansatz.kernel.env :as env]
+  (:require [ansatz.kernel.env :as env]
             [ansatz.kernel.expr :as e]
             [ansatz.kernel.level :as level]
             [ansatz.kernel.name :as name]
@@ -106,26 +105,53 @@
 
 ;; ## Checked declarations
 
-(defn install-declaration!
-  "Checks a closed definition or theorem and installs it atomically.
-  Existing declarations are rejected rather than silently trusted."
-  [kind label type value]
+(defn declare-constant
+  "Pure. Checks a closed definition or theorem against the context's
+  environment and returns the context extended with it. The kernel rejects a
+  name that is already declared, so existing declarations are never silently
+  trusted. `value` is a term, or a function of the context that returns one
+  (for proofs that must see the declarations made so far)."
+  [{:keys [env] :as ctx} kind label type value]
   (when-not (#{:def :thm} kind)
     (throw (ex-info "Only checked definitions and theorems are permitted" {:kind kind})))
-  (when (or (nil? type) (nil? value))
-    (throw (ex-info "A declaration requires both a type and a value" {:name label})))
-  (k/ensure-init!)
-  (locking k/install-lock
-    (let [constructor (case kind :def env/mk-def :thm env/mk-thm)
-          ci (constructor (name/from-string label) [] type value)]
-      (swap! a/ansatz-env #(env/check-constant % ci))))
-  (k/const label))
+  (let [value (if (fn? value) (value ctx) value)]
+    (when (or (nil? type) (nil? value))
+      (throw (ex-info "A declaration requires both a type and a value" {:name label})))
+    (let [make (case kind :def env/mk-def :thm env/mk-thm)]
+      (assoc ctx :env (env/check-constant env (make (name/from-string label) [] type value))))))
+
+(defn declarer
+  "A function `(decl ctx kind label type value)` that declares `prefix`+`label`
+  and is idempotent: a constant already in the context is left alone, which is
+  what lets every namespace's `install` be re-run against a context that has
+  it. One of these replaces the per-namespace guard-and-install wrappers."
+  [prefix]
+  (fn [ctx kind label type value]
+    (let [full (str prefix label)]
+      (if (k/installed? ctx full)
+        ctx
+        (declare-constant ctx kind full type value)))))
+
+(defn with-kind
+  "Fixes the kind of a [[declarer]]: `(with-kind decl :thm)` is a function
+  `(theorem ctx label type value)`."
+  [decl kind]
+  (fn [ctx label type value] (decl ctx kind label type value)))
 
 (defn declaration
-  "Returns an installed declaration with its complete type and value."
-  [label]
-  (when-let [ci (env/lookup (k/env) (name/from-string label))]
-    {:kind (env/ci-tag ci) :statement (env/ci-type ci) :proof (env/ci-value ci)}))
+  "The installed declaration `label` with its complete type and value, or nil.
+  The one-argument form reads the global environment (deprecated)."
+  ([label] (declaration (k/base-ctx) label))
+  ([ctx label]
+   (when-let [ci (k/lookup ctx label)]
+     {:kind (env/ci-tag ci) :statement (env/ci-type ci) :proof (env/ci-value ci)})))
+
+(defn install-declaration!
+  "Deprecated IO edge: declares one constant in the global environment.
+  Use [[declare-constant]] inside a context-threaded `install` instead."
+  [kind label type value]
+  (k/commit! #(declare-constant % kind label type value))
+  (k/const label))
 
 ;; ## Logic
 ;;
@@ -252,36 +278,40 @@
 
 ;; ## Axiom audit
 
+(defn- constants-in
+  "The names (strings) of the constants mentioned in `expr`."
+  [expr]
+  (loop [stack [expr] found #{}]
+    (if (empty? stack)
+      found
+      (let [x (peek stack) stack (pop stack)]
+        (case (e/tag x)
+          :const (recur stack (conj found (name/->string (e/const-name x))))
+          :app (recur (conj stack (e/app-fn x) (e/app-arg x)) found)
+          :lam (recur (conj stack (e/lam-type x) (e/lam-body x)) found)
+          :forall (recur (conj stack (e/forall-type x) (e/forall-body x)) found)
+          :let (recur (conj stack (e/let-type x) (e/let-value x) (e/let-body x)) found)
+          :mdata (recur (conj stack (e/mdata-expr x)) found)
+          :proj (recur (conj stack (e/proj-struct x)) found)
+          (recur stack found))))))
+
 (defn axioms-of
   "The set of axioms (as name strings) that the declaration `label` depends on,
-  transitively through the types and values of every constant it mentions."
-  [label]
-  (let [env (k/env)
-        seen (java.util.HashSet.)
-        axioms (atom #{})]
-    (letfn [(consts [expr acc]
-              (loop [stack [expr] acc acc]
-                (if (empty? stack)
-                  acc
-                  (let [x (peek stack) stack (pop stack)]
-                    (case (e/tag x)
-                      :const (recur stack (conj acc (name/->string (e/const-name x))))
-                      :app (recur (conj stack (e/app-fn x) (e/app-arg x)) acc)
-                      :lam (recur (conj stack (e/lam-type x) (e/lam-body x)) acc)
-                      :forall (recur (conj stack (e/forall-type x) (e/forall-body x)) acc)
-                      :let (recur (conj stack (e/let-type x) (e/let-value x) (e/let-body x)) acc)
-                      :mdata (recur (conj stack (e/mdata-expr x)) acc)
-                      :proj (recur (conj stack (e/proj-struct x)) acc)
-                      (recur stack acc))))))
-            (visit [s]
-              (when (.add seen s)
-                (when-let [ci (env/lookup env (name/from-string s))]
-                  (when (env/axiom? ci) (swap! axioms conj s))
-                  (doseq [c (consts (env/ci-type ci) #{})] (visit c))
-                  (when-let [v (env/ci-value ci)]
-                    (doseq [c (consts v #{})] (visit c))))))]
-      (visit (str label))
-      @axioms)))
+  transitively through the types and values of every constant it mentions.
+  The one-argument form reads the global environment (deprecated)."
+  ([label] (axioms-of (k/base-ctx) label))
+  ([ctx label]
+   (loop [todo [(str label)] seen #{} axioms #{}]
+     (if-let [[s & more] (seq todo)]
+       (if (seen s)
+         (recur more seen axioms)
+         (if-let [ci (k/lookup ctx s)]
+           (recur (into more (mapcat constants-in)
+                        (keep identity [(env/ci-type ci) (env/ci-value ci)]))
+                  (conj seen s)
+                  (cond-> axioms (env/axiom? ci) (conj s)))
+           (recur more (conj seen s) axioms)))
+       axioms))))
 
 ;; ## Generic quotient lifting
 ;;
@@ -289,65 +319,60 @@
 ;; `:refl` (a ↦ proof of rel a a) and `:symm` ((a b h) ↦ proof of rel b a).
 ;; Operations and congruences are Clojure functions producing kernel terms.
 
-(defn- quot-of [qc] (quot-type (:alpha qc) (:rel qc)))
-(defn- mk-of [qc a] (quot-mk (:alpha qc) (:rel qc) a))
-(defn- sound-of [qc a b h] (quot-sound (:alpha qc) (:rel qc) a b h))
-(defn- rel-of [qc a b] (app (:rel qc) a b))
+(defn- quotient-terms
+  "The term builders of a quotient description: its type `Quot r`, `Quot.mk`,
+  `Quot.sound` and the relation applied to two elements."
+  [{:keys [alpha rel]}]
+  {:type (quot-type alpha rel)
+   :mk (fn [a] (quot-mk alpha rel a))
+   :sound (fn [a b h] (quot-sound alpha rel a b h))
+   :related (fn [a b] (app rel a b))})
 
 (defn lift1*
   "`Quot r → Quot r` lifting `op` (a ↦ term) with `congr` ((a b h) ↦ proof of
   `r (op a) (op b)`)."
-  [qc op congr]
-  (let [Qt (quot-of qc) A (:alpha qc)]
-    (lam "x" Qt
-         (fn [x]
-           (app (quot-lift A (:rel qc) Qt
-                           (lam "a" A #(mk-of qc (op %)))
-                           (lam "a" A (fn [a] (lam "b" A (fn [b] (lam "h" (rel-of qc a b)
-                                                                      #(sound-of qc (op a) (op b) (congr a b %))))))))
-                x)))))
+  [{:keys [alpha rel] :as qc} op congr]
+  (let [{:keys [mk sound related] Qt :type} (quotient-terms qc)]
+    (lambda [[x Qt]]
+      (app (quot-lift alpha rel Qt
+                      (lambda [[a alpha]] (mk (op a)))
+                      (lambda [[a alpha] [b alpha] [h (related a b)]]
+                        (sound (op a) (op b) (congr a b h))))
+           x))))
 
 (defn quot-ind-all*
   "Proof of `P x₁ … xₙ` for the bound quotient variables `xs`, from `leaf`
   (representatives ↦ proof of `P (mk a₁) … (mk aₙ)`)."
-  [qc xs motive leaf]
-  (let [Qt (quot-of qc) A (:alpha qc)]
-    (letfn [(go [done remaining]
-              (if (empty? remaining)
+  [{:keys [alpha rel] :as qc} xs motive leaf]
+  (let [{:keys [mk] Qt :type} (quotient-terms qc)]
+    (letfn [(go [done [x & more]]
+              (if (nil? x)
                 (leaf done)
-                (app (quot-ind A (:rel qc)
-                               (lam "x" Qt #(apply motive (concat (map (partial mk-of qc) done) [%] (rest remaining))))
-                               (lam "a" A #(go (conj done %) (rest remaining))))
-                     (first remaining))))]
-      (go [] (vec xs)))))
+                (app (quot-ind alpha rel
+                               (lambda [[y Qt]] (apply motive (concat (map mk done) [y] more)))
+                               (lambda [[a alpha]] (go (conj done a) more)))
+                     x)))]
+      (go [] (seq xs)))))
 
 (defn lift2*
   "`Quot r → Quot r → Quot r` lifting the binary `op` with `congr`
   ((a a' b b' ha hb) ↦ proof of `r (op a b) (op a' b')`)."
-  [qc op congr]
-  (let [Qt (quot-of qc) A (:alpha qc) refl (:refl qc)
+  [{:keys [alpha rel refl] :as qc} op congr]
+  (let [{:keys [mk sound related] Qt :type} (quotient-terms qc)
+        ;; the map on the second argument, for a fixed first representative
         inner (fn [a y]
-                (app (quot-lift A (:rel qc) Qt
-                                (lam "b" A #(mk-of qc (op a %)))
-                                (lam "b" A (fn [b] (lam "b'" A (fn [b'] (lam "h" (rel-of qc b b')
-                                                                              #(sound-of qc (op a b) (op a b')
-                                                                                         (congr a a b b' (refl a) %))))))))
+                (app (quot-lift alpha rel Qt
+                                (lambda [[b alpha]] (mk (op a b)))
+                                (lambda [[b alpha] [b' alpha] [h (related b b')]]
+                                  (sound (op a b) (op a b') (congr a a b b' (refl a) h))))
                      y))]
-    (lam "x" Qt
-         (fn [x]
-           (lam "y" Qt
-                (fn [y]
-                  (app (quot-lift A (:rel qc) Qt
-                                  (lam "a" A #(inner % y))
-                                  (lam "a" A
-                                       (fn [a]
-                                         (lam "a'" A
-                                              (fn [a']
-                                                (lam "h" (rel-of qc a a')
-                                                     (fn [h]
-                                                       (app (quot-ind A (:rel qc)
-                                                                      (lam "z" Qt #(k/eq-at Qt u1 (inner a %) (inner a' %)))
-                                                                      (lam "b" A #(sound-of qc (op a %) (op a' %)
-                                                                                            (congr a a' % % h (refl %)))))
-                                                            y))))))))
-                       x)))))))
+    (lambda [[x Qt] [y Qt]]
+      (app (quot-lift alpha rel Qt
+                      (lambda [[a alpha]] (inner a y))
+                      (lambda [[a alpha] [a' alpha] [h (related a a')]]
+                        (app (quot-ind alpha rel
+                                       (lambda [[z Qt]] (k/eq-at Qt u1 (inner a z) (inner a' z)))
+                                       (lambda [[b alpha]]
+                                         (sound (op a b) (op a' b) (congr a a' b b h (refl b)))))
+                             y)))
+           x))))
