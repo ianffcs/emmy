@@ -36,13 +36,9 @@
 (defn- seq-value [s]
   (t/app (k/const "Subtype.val" u) sequence-type (c "Cauchy") s))
 
-(defn- define! [name type value]
-  (when-not (k/installed? (str prefix name))
-    (t/install-declaration! :def (str prefix name) type value)))
-
-(defn- theorem! [name type value]
-  (when-not (k/installed? (str prefix name))
-    (t/install-declaration! :thm (str prefix name) type value)))
+(def ^:private decl (t/declarer prefix))
+(def ^:private define (t/with-kind decl :def))
+(def ^:private theorem (t/with-kind decl :thm))
 
 (defn- within-self-proof [r eps positive]
   (let [d (den r)
@@ -70,35 +66,34 @@
            (le n j)
            (close-at (t/app s i) (t/app s j) eps))))
 
-(defn install!
-  "Installs the exact sequence/quotient carrier and quotient soundness theorem.
-  Does not install or assume complete ordered field laws."
-  []
-  (k/ensure-init!)
-  (locking k/install-lock
-    (define! "RationalRep" t/type0 rep)
-    (define! "Within" (t/>-> rep rep rep t/prop)
+(defn install
+  "Pure. Declares the exact sequence/quotient carrier and quotient soundness
+  theorem into `ctx`. Does not install or assume complete ordered field laws."
+  [ctx]
+  (as-> ctx ctx
+    (define ctx "RationalRep" t/type0 rep)
+    (define ctx "Within" (t/>-> rep rep rep t/prop)
       (t/lambda [[a rep] [b rep] [eps rep]]
         (let [difference (k/mul (k/sub (k/mul (num a) (den b))
                                        (k/mul (num b) (den a))) (den eps))
               bound (k/mul (num eps) (k/mul (den a) (den b)))]
           (t/and' (lt (k/neg bound) difference) (lt difference bound)))))
-    (define! "Cauchy" (t/predicate sequence-type)
+    (define ctx "Cauchy" (t/predicate sequence-type)
       (t/lambda [[s sequence-type]]
         (t/forall [[eps rep]]
           (t/arrow (lt k/zero (num eps))
                    (t/exists' nat
                      (t/lambda [[n nat]] (cauchy-tail s eps n)))))))
-    (define! "CauchySequence" t/type0
+    (define ctx "CauchySequence" t/type0
       (t/app (k/const "Subtype" u) sequence-type (c "Cauchy")))
-    (theorem! "within_self"
+    (theorem ctx "within_self"
       (t/forall [[r rep] [eps rep]]
         (t/arrow (lt k/zero (num eps)) (close-at r r eps)))
       (t/lambda [[r rep] [eps rep] [positive (lt k/zero (num eps))]]
         (within-self-proof r eps positive)))
-    (define! "constantSequence" (t/arrow rep sequence-type)
+    (define ctx "constantSequence" (t/arrow rep sequence-type)
       (t/lambda [[r rep]] (t/lam "n" nat (fn [_] r))))
-    (theorem! "constant_cauchy"
+    (theorem ctx "constant_cauchy"
       (t/forall [[r rep]] (t/app (c "Cauchy") (t/app (c "constantSequence") r)))
       (t/lambda [[r rep] [eps rep] [positive (lt k/zero (num eps))]]
         (let [s (t/app (c "constantSequence") r)
@@ -108,11 +103,11 @@
                             [_hi (le (e/lit-nat 0) i)]
                             [_hj (le (e/lit-nat 0) j)]]
                    (t/app (c "within_self") r eps positive))))))
-    (define! "rationalSequence" (t/arrow rep (c "CauchySequence"))
+    (define ctx "rationalSequence" (t/arrow rep (c "CauchySequence"))
       (t/lambda [[r rep]]
         (t/app (k/const "Subtype.mk" u) sequence-type (c "Cauchy")
                (t/app (c "constantSequence") r) (t/app (c "constant_cauchy") r))))
-    (define! "Equivalent"
+    (define ctx "Equivalent"
       (t/arrow (c "CauchySequence") (t/arrow (c "CauchySequence") t/prop))
       (t/lambda [[s (c "CauchySequence")] [r (c "CauchySequence")]]
         (t/forall [[eps rep]]
@@ -123,18 +118,24 @@
                          (t/arrow (le n i)
                                   (close-at (t/app (seq-value s) i)
                                             (t/app (seq-value r) i) eps)))))))))
-    (define! "Carrier" t/type0
+    (define ctx "Carrier" t/type0
       (t/app (k/const "Quot" u) (c "CauchySequence") (c "Equivalent")))
-    (define! "ofCauchy" (t/arrow (c "CauchySequence") (c "Carrier"))
+    (define ctx "ofCauchy" (t/arrow (c "CauchySequence") (c "Carrier"))
       (t/app (k/const "Quot.mk" u) (c "CauchySequence") (c "Equivalent")))
-    (define! "ofRationalRep" (t/arrow rep (c "Carrier"))
+    (define ctx "ofRationalRep" (t/arrow rep (c "Carrier"))
       (t/lambda [[r rep]] (t/app (c "ofCauchy") (t/app (c "rationalSequence") r))))
-    (when-not (k/installed? (str prefix "sound"))
-      (t/install-declaration!
-       :thm (str prefix "sound")
-       (t/forall [[s (c "CauchySequence")] [r (c "CauchySequence")]]
-         (t/arrow (t/app (c "Equivalent") s r)
-                  (t/app (k/const "Eq" u) (c "Carrier")
-                         (t/app (c "ofCauchy") s) (t/app (c "ofCauchy") r))))
-       (t/app (k/const "Quot.sound" u) (c "CauchySequence") (c "Equivalent")))))
+    (theorem ctx "sound"
+      (t/forall [[s (c "CauchySequence")] [r (c "CauchySequence")]]
+        (t/arrow (t/app (c "Equivalent") s r)
+                 (t/app (k/const "Eq" u) (c "Carrier")
+                        (t/app (c "ofCauchy") s) (t/app (c "ofCauchy") r))))
+      (t/app (k/const "Quot.sound" u) (c "CauchySequence") (c "Equivalent")))))
+
+(defn install!
+  "Installs the exact sequence/quotient carrier and quotient soundness theorem.
+  Does not install or assume complete ordered field laws."
+  []
+  (k/ensure-init!)
+  (locking k/install-lock
+    (k/commit! install))
   :installed)

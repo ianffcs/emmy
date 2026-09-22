@@ -150,13 +150,9 @@
 (defn- mul-pos [a b ha hb]
   (t/app (k/const "Int.mul_pos") a b ha hb))
 
-(defn- define! [label type value]
-  (when-not (k/installed? (str prefix label))
-    (t/install-declaration! :def (str prefix label) type value)))
-
-(defn- theorem! [label type value]
-  (when-not (k/installed? (str prefix label))
-    (t/install-declaration! :thm (str prefix label) type value)))
+(def ^:private decl (t/declarer prefix))
+(def ^:private define (t/with-kind decl :def))
+(def ^:private theorem (t/with-kind decl :thm))
 
 (defn- cancel-proof
   "Proof of `a = b` from `hd : 0 < d` and `h : a * d = b * d`."
@@ -170,44 +166,43 @@
                     step
                     (k/lemma "Int.mul_ediv_cancel" b d hne)))))
 
-(defn install!
-  "Installs the kernel rational-representative layer (see the namespace
-  docstring). Idempotent; requires only the bundled Init tier."
-  []
-  (k/ensure-init!)
-  (locking k/install-lock
-    (let [rep (c "Rep")]
-      (define! "Rep" t/type0 (t/app (k/const "Subtype" l1) int-pair rep-predicate))
-      (define! "num" (t/arrow rep k/int-type)
+(defn install
+  "Pure. Declares the kernel rational-representative layer (see the
+  namespace docstring) into `ctx`."
+  [ctx]
+  (let [rep (c "Rep")]
+    (as-> ctx ctx
+      (define ctx "Rep" t/type0 (t/app (k/const "Subtype" l1) int-pair rep-predicate))
+      (define ctx "num" (t/arrow rep k/int-type)
         (t/lambda [[r rep]]
           (t/app (k/const "Prod.fst" l0 l0) k/int-type k/int-type
                  (t/app (k/const "Subtype.val" l1) int-pair rep-predicate r))))
-      (define! "den" (t/arrow rep k/int-type)
+      (define ctx "den" (t/arrow rep k/int-type)
         (t/lambda [[r rep]]
           (t/app (k/const "Prod.snd" l0 l0) k/int-type k/int-type
                  (t/app (k/const "Subtype.val" l1) int-pair rep-predicate r))))
-      (theorem! "den_pos" (t/forall [[r rep]] (lt k/zero (den r)))
+      (theorem ctx "den_pos" (t/forall [[r rep]] (lt k/zero (den r)))
         (t/lambda [[r rep]]
           (t/app (k/const "Subtype.property" l1) int-pair rep-predicate r)))
-      (define! "Equiv" (t/arrow rep (t/arrow rep t/prop))
+      (define ctx "Equiv" (t/arrow rep (t/arrow rep t/prop))
         (t/lambda [[a rep] [b rep]]
           (k/eq (k/mul (num a) (den b)) (k/mul (num b) (den a)))))
-      (define! "add" (t/arrow rep (t/arrow rep rep))
+      (define ctx "add" (t/arrow rep (t/arrow rep rep))
         (t/lambda [[a rep] [b rep]]
           (make-rep (k/add (k/mul (num a) (den b)) (k/mul (num b) (den a)))
                     (k/mul (den a) (den b))
                     (mul-pos (den a) (den b)
                              (t/app (c "den_pos") a) (t/app (c "den_pos") b)))))
-      (define! "mul" (t/arrow rep (t/arrow rep rep))
+      (define ctx "mul" (t/arrow rep (t/arrow rep rep))
         (t/lambda [[a rep] [b rep]]
           (make-rep (k/mul (num a) (num b)) (k/mul (den a) (den b))
                     (mul-pos (den a) (den b)
                              (t/app (c "den_pos") a) (t/app (c "den_pos") b)))))
-      (define! "neg" (t/arrow rep rep)
+      (define ctx "neg" (t/arrow rep rep)
         (t/lambda [[a rep]]
           (make-rep (k/neg (num a)) (den a) (t/app (c "den_pos") a))))
 
-      (theorem! "int_mul_right_cancel"
+      (theorem ctx "int_mul_right_cancel"
         (t/forall [[a k/int-type] [b k/int-type] [d k/int-type]]
           (t/arrow (lt k/zero d)
                    (t/arrow (k/eq (k/mul a d) (k/mul b d)) (k/eq a b))))
@@ -215,14 +210,14 @@
                    [hd (lt k/zero d)] [h (k/eq (k/mul a d) (k/mul b d))]]
           (cancel-proof a b d hd h)))
 
-      (theorem! "equiv_refl" (t/forall [[a rep]] (equiv a a))
+      (theorem ctx "equiv_refl" (t/forall [[a rep]] (equiv a a))
         (t/lambda [[a rep]] (:term (k/refl (k/mul (num a) (den a))))))
 
-      (theorem! "equiv_symm"
+      (theorem ctx "equiv_symm"
         (t/forall [[a rep] [b rep]] (t/arrow (equiv a b) (equiv b a)))
         (t/lambda [[a rep] [b rep] [h (equiv a b)]] (:term (k/symm (hyp a b h)))))
 
-      (theorem! "equiv_trans"
+      (theorem ctx "equiv_trans"
         (t/forall [[a rep] [b rep] [cc rep]]
           (t/arrow (equiv a b) (t/arrow (equiv b cc) (equiv a cc))))
         (t/lambda [[a rep] [b rep] [cc rep] [h1 (equiv a b)] [h2 (equiv b cc)]]
@@ -235,7 +230,7 @@
             (t/app (c "int_mul_right_cancel") lhs rhs (den b)
                    (t/app (c "den_pos") b) (:term scaled)))))
 
-      (theorem! "add_congr"
+      (theorem ctx "add_congr"
         (t/forall [[a rep] [a' rep] [b rep] [b' rep]]
           (t/arrow (equiv a a') (t/arrow (equiv b b')
                                          (equiv (t/app (c "add") a b) (t/app (c "add") a' b')))))
@@ -248,7 +243,7 @@
                   [[(k/mul (den b) (den b')) (hyp a a' ha)]
                    [(k/mul (den a) (den a')) (hyp b b' hb)]]))))
 
-      (theorem! "mul_congr"
+      (theorem ctx "mul_congr"
         (t/forall [[a rep] [a' rep] [b rep] [b' rep]]
           (t/arrow (equiv a a') (t/arrow (equiv b b')
                                          (equiv (t/app (c "mul") a b) (t/app (c "mul") a' b')))))
@@ -259,12 +254,20 @@
                   [[(k/mul (num b) (den b')) (hyp a a' ha)]
                    [(k/mul (num a') (den a)) (hyp b b' hb)]]))))
 
-      (theorem! "neg_congr"
+      (theorem ctx "neg_congr"
         (t/forall [[a rep] [a' rep]]
           (t/arrow (equiv a a') (equiv (t/app (c "neg") a) (t/app (c "neg") a'))))
         (t/lambda [[a rep] [a' rep] [ha (equiv a a')]]
           (:term (algebra/linear-combination
                   (k/mul (k/neg (num a)) (den a'))
                   (k/mul (k/neg (num a')) (den a))
-                  [[(k/lit -1) (hyp a a' ha)]]))))))
+                  [[(k/lit -1) (hyp a a' ha)]])))))))
+
+(defn install!
+  "Installs the kernel rational-representative layer (see the namespace
+  docstring). Idempotent; requires only the bundled Init tier."
+  []
+  (k/ensure-init!)
+  (locking k/install-lock
+    (k/commit! install))
   :installed)
