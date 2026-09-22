@@ -25,7 +25,7 @@
   (when-not (symbol? var)
     (throw (ex-info "The coordinate must be a symbol" {:variable var})))
   (k/ensure-init!)
-  (when-not (k/installed? polynomial/theorem-name) (polynomial/install!))
+  (when-not (k/installed? (k/base-ctx) polynomial/theorem-name) (polynomial/install!))
   (let [ir     (expression/->ir expr)
         params (expression/params-of ir var)
         value  (expression/ir->value ir var params)]
@@ -129,7 +129,7 @@
                                                     :available (sort (keys lagrange-theorems))})))]
     (k/ensure-init!)
     (lagrange/install!)
-    (let [{:keys [statement proof]} (t/declaration name)]
+    (let [{:keys [statement proof]} (t/declaration (k/base-ctx) name)]
       (when-not (env/verifies? (k/env) statement proof)
         (throw (ex-info "Kernel rejected Euler–Lagrange proof" {:theorem name})))
       {:fact which :theorem name :reading reading :statement statement :proof proof})))
