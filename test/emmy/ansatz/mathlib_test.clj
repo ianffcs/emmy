@@ -25,7 +25,7 @@
   (let [{:keys [statement proof]}
         (t/declaration (k/base-ctx) "Emmy.Mathlib.MetricSpace")]
     (testing "MetricSpace is a checked structure alias, not True"
-      (is (= (t/arrow t/type0 t/prop) statement))
+      (is (= (t/arrow t/type0 t/type0) statement))
       (is (re-find #"Emmy.Analysis.Metric.MetricSpace" (pr-str proof))))))
 
 (deftest adapters-preserve-physlib-propositions

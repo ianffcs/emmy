@@ -66,7 +66,7 @@
   leave it in place since it's idempotent."
   [ctx]
   (when-let [{:keys [statement proof]} (t/declaration ctx (str prefix "MetricSpace"))]
-    (let [expected-type (t/>-> t/type0 t/prop)]
+    (let [expected-type (t/>-> t/type0 t/type0)]
       ;; Lambda binders carry fresh fvar ids, so compare the stable declaration
       ;; shape rather than a newly-built lambda for alpha-equivalence.
       (when (or (not= statement expected-type)
@@ -85,7 +85,7 @@
       (decl :def "Norm" (t/>-> Real Real) (t/lam "x" Real norm))
       (decl :def "Dist" (t/>-> Real Real Real)
             (t/lam "x" Real #(t/lam "y" Real (fn [y] (dist % y)))))
-      (decl :def "MetricSpace" (t/>-> t/type0 t/prop)
+      (decl :def "MetricSpace" (t/>-> t/type0 t/type0)
             (t/lam "A" t/type0 (fn [a] (t/app MetricSpace a))))
       (decl :def "HasDerivAt" (t/>-> (t/>-> Real Real) Real Real t/prop)
             (t/lam "f" (t/arrow Real Real)
