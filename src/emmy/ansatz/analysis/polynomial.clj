@@ -46,7 +46,9 @@
       (eval-real (r/of-q x) (t/lambda [[j Nat]] (r/of-q (t/app rho j))) expr)
       (r/of-q (eval-q x rho expr)))))
 
-(defn- install-cast! []
+(def ^:private decl (t/declarer ""))
+
+(defn- install-cast [ctx]
   (let [QRho (t/arrow Nat q/Q)
         frac-q (fn [p n]
                  (q/mk (rat/make-rep p
@@ -66,38 +68,37 @@
             (t/app (k/const "Eq.trans" u) r/R (op ra rb) (op ca rb) endpoint h1
               (t/app (k/const "Eq.trans" u) r/R (op ca rb) (op ca cb) endpoint h2
                 (t/app (k/const (str "Emmy.Analysis.R." law)) qa qb)))))]
-    (when-not (k/installed? eval-q-name)
-      (t/install-declaration! :def eval-q-name (t/arrow q/Q (t/arrow QRho (t/arrow P q/Q)))
-        (t/lambda [[x q/Q] [rho QRho] [expr P]]
-          (t/app (k/const "Emmy.PolyExpr.rec" u)
-            (t/lam "e" P (fn [_] q/Q))
-            (t/lambda [[a k/int-type]] (q/of-int a)) x
-            (t/lambda [[_a P] [_b P] [va q/Q] [vb q/Q]] (q/add va vb))
-            (t/lambda [[_a P] [_b P] [va q/Q] [vb q/Q]] (q/mul va vb))
-            (t/lambda [[_a P] [va q/Q]] (q/neg va))
-            (t/lambda [[j Nat]] (t/app rho j))
-            (t/lambda [[p k/int-type] [n Nat]] (frac-q p n)) expr))))
-    (when-not (k/installed? cast-name)
-      (t/install-declaration! :thm cast-name (t/forall [[expr P]] (cast-proposition expr))
-        (t/app (k/const "Emmy.PolyExpr.rec" level/zero)
-          (t/lambda [[expr P]] (cast-proposition expr))
-          (t/lambda [[a k/int-type] [_rho QRho] [_x q/Q]]
-            (:term (k/refl (r/of-q (q/of-int a)) r/R u)))
-          (t/lambda [[_rho QRho] [x q/Q]] (:term (k/refl (r/of-q x) r/R u)))
-          (t/lambda [[a P] [b P] [ha (cast-proposition a)] [hb (cast-proposition b)] [rho QRho] [x q/Q]]
-            (cast-binary r/add "ofQ_add" a b ha hb rho x))
-          (t/lambda [[a P] [b P] [ha (cast-proposition a)] [hb (cast-proposition b)] [rho QRho] [x q/Q]]
-            (cast-binary r/mul "ofQ_mul" a b ha hb rho x))
-          (t/lambda [[a P] [ha (cast-proposition a)] [rho QRho] [x q/Q]]
-            (let [ra (eval-real (r/of-q x) (t/lambda [[j Nat]] (r/of-q (t/app rho j))) a)
-                  qa (eval-q x rho a) ca (r/of-q qa)
-                  h (t/app (k/const "congrArg" u u) r/R r/R ra ca
-                      (k/const "Emmy.Analysis.R.neg") (t/app ha rho x))]
-              (t/app (k/const "Eq.trans" u) r/R (r/neg ra) (r/neg ca) (r/of-q (q/neg qa)) h
-                (t/app (k/const "Emmy.Analysis.R.ofQ_neg") qa))))
-          (t/lambda [[j Nat] [rho QRho] [_x q/Q]] (:term (k/refl (r/of-q (t/app rho j)) r/R u)))
-          (t/lambda [[p k/int-type] [n Nat] [_rho QRho] [_x q/Q]]
-            (:term (k/refl (r/of-q (frac-q p n)) r/R u))))))))
+    (-> ctx
+        (decl :def eval-q-name (t/arrow q/Q (t/arrow QRho (t/arrow P q/Q)))
+              (t/lambda [[x q/Q] [rho QRho] [expr P]]
+                (t/app (k/const "Emmy.PolyExpr.rec" u)
+                  (t/lam "e" P (fn [_] q/Q))
+                  (t/lambda [[a k/int-type]] (q/of-int a)) x
+                  (t/lambda [[_a P] [_b P] [va q/Q] [vb q/Q]] (q/add va vb))
+                  (t/lambda [[_a P] [_b P] [va q/Q] [vb q/Q]] (q/mul va vb))
+                  (t/lambda [[_a P] [va q/Q]] (q/neg va))
+                  (t/lambda [[j Nat]] (t/app rho j))
+                  (t/lambda [[p k/int-type] [n Nat]] (frac-q p n)) expr)))
+        (decl :thm cast-name (t/forall [[expr P]] (cast-proposition expr))
+              (t/app (k/const "Emmy.PolyExpr.rec" level/zero)
+                (t/lambda [[expr P]] (cast-proposition expr))
+                (t/lambda [[a k/int-type] [_rho QRho] [_x q/Q]]
+                  (:term (k/refl (r/of-q (q/of-int a)) r/R u)))
+                (t/lambda [[_rho QRho] [x q/Q]] (:term (k/refl (r/of-q x) r/R u)))
+                (t/lambda [[a P] [b P] [ha (cast-proposition a)] [hb (cast-proposition b)] [rho QRho] [x q/Q]]
+                  (cast-binary r/add "ofQ_add" a b ha hb rho x))
+                (t/lambda [[a P] [b P] [ha (cast-proposition a)] [hb (cast-proposition b)] [rho QRho] [x q/Q]]
+                  (cast-binary r/mul "ofQ_mul" a b ha hb rho x))
+                (t/lambda [[a P] [ha (cast-proposition a)] [rho QRho] [x q/Q]]
+                  (let [ra (eval-real (r/of-q x) (t/lambda [[j Nat]] (r/of-q (t/app rho j))) a)
+                        qa (eval-q x rho a) ca (r/of-q qa)
+                        h (t/app (k/const "congrArg" u u) r/R r/R ra ca
+                            (k/const "Emmy.Analysis.R.neg") (t/app ha rho x))]
+                    (t/app (k/const "Eq.trans" u) r/R (r/neg ra) (r/neg ca) (r/of-q (q/neg qa)) h
+                      (t/app (k/const "Emmy.Analysis.R.ofQ_neg") qa))))
+                (t/lambda [[j Nat] [rho QRho] [_x q/Q]] (:term (k/refl (r/of-q (t/app rho j)) r/R u)))
+                (t/lambda [[p k/int-type] [n Nat] [_rho QRho] [_x q/Q]]
+                  (:term (k/refl (r/of-q (frac-q p n)) r/R u))))))))
 
 (defn proposition
   "The closed analytic derivative proposition for a closed PolyExpr term."
@@ -118,6 +119,46 @@
     5 (t/app (pc "param") (e/lit-nat a))
     6 (t/app (pc "frac") (k/lit a) (e/lit-nat b))))
 
+(defn install
+  "Pure. Declares evalReal and its structural HasDerivAt theorem into `ctx`.
+  Real evaluation is a non-executable kernel definition, not a conversion to
+  floating point."
+  [ctx]
+  (-> ctx
+    (decl :def eval-name
+          (t/arrow r/R (t/arrow Rho (t/arrow P r/R)))
+          (t/lambda [[x r/R] [rho Rho] [expr P]]
+            (t/app (k/const "Emmy.PolyExpr.rec" u)
+              (t/lam "e" P (fn [_] r/R))
+              (t/lambda [[a k/int-type]] (r/of-q (q/of-int a))) x
+              (t/lambda [[_a P] [_b P] [va r/R] [vb r/R]] (r/add va vb))
+              (t/lambda [[_a P] [_b P] [va r/R] [vb r/R]] (r/mul va vb))
+              (t/lambda [[_a P] [va r/R]] (r/neg va))
+              (t/lambda [[j Nat]] (t/app rho j))
+              (t/lambda [[p k/int-type] [n Nat]] (fraction p n)) expr)))
+    (decl :thm theorem-name
+          (t/forall [[expr P]] (proposition expr))
+          (t/app (k/const "Emmy.PolyExpr.rec" level/zero)
+            (t/lambda [[expr P]] (proposition expr))
+            (t/lambda [[a k/int-type] [_rho Rho] [x r/R]]
+              (t/app (dc "const") (r/of-q (q/of-int a)) x))
+            (t/lambda [[_rho Rho] [x r/R]] (t/app (dc "id") x))
+            (t/lambda [[a P] [b P] [ha (proposition a)] [hb (proposition b)] [rho Rho] [x r/R]]
+              (t/app (dc "add") (function-at rho a) (function-at rho b)
+                (eval-real x rho (t/app (pc "deriv") a))
+                (eval-real x rho (t/app (pc "deriv") b)) x (t/app ha rho x) (t/app hb rho x)))
+            (t/lambda [[a P] [b P] [ha (proposition a)] [hb (proposition b)] [rho Rho] [x r/R]]
+              (t/app (dc "mul") (function-at rho a) (function-at rho b)
+                (eval-real x rho (t/app (pc "deriv") a))
+                (eval-real x rho (t/app (pc "deriv") b)) x (t/app ha rho x) (t/app hb rho x)))
+            (t/lambda [[a P] [ha (proposition a)] [rho Rho] [x r/R]]
+              (t/app (dc "neg") (function-at rho a)
+                (eval-real x rho (t/app (pc "deriv") a)) x (t/app ha rho x)))
+            (t/lambda [[j Nat] [rho Rho] [x r/R]] (t/app (dc "const") (t/app rho j) x))
+            (t/lambda [[p k/int-type] [n Nat] [_rho Rho] [x r/R]]
+              (t/app (dc "const") (fraction p n) x))))
+    install-cast))
+
 (defn install!
   "Installs evalReal and its structural HasDerivAt theorem. Real evaluation is
   a non-executable kernel definition, not a conversion to floating point."
@@ -125,39 +166,5 @@
   (locking k/install-lock
     (d/install!)
     (calculus/install!)
-    (when-not (k/installed? eval-name)
-      (t/install-declaration! :def eval-name
-        (t/arrow r/R (t/arrow Rho (t/arrow P r/R)))
-        (t/lambda [[x r/R] [rho Rho] [expr P]]
-          (t/app (k/const "Emmy.PolyExpr.rec" u)
-            (t/lam "e" P (fn [_] r/R))
-            (t/lambda [[a k/int-type]] (r/of-q (q/of-int a))) x
-            (t/lambda [[_a P] [_b P] [va r/R] [vb r/R]] (r/add va vb))
-            (t/lambda [[_a P] [_b P] [va r/R] [vb r/R]] (r/mul va vb))
-            (t/lambda [[_a P] [va r/R]] (r/neg va))
-            (t/lambda [[j Nat]] (t/app rho j))
-            (t/lambda [[p k/int-type] [n Nat]] (fraction p n)) expr))))
-    (when-not (k/installed? theorem-name)
-      (t/install-declaration! :thm theorem-name
-        (t/forall [[expr P]] (proposition expr))
-        (t/app (k/const "Emmy.PolyExpr.rec" level/zero)
-          (t/lambda [[expr P]] (proposition expr))
-          (t/lambda [[a k/int-type] [_rho Rho] [x r/R]]
-            (t/app (dc "const") (r/of-q (q/of-int a)) x))
-          (t/lambda [[_rho Rho] [x r/R]] (t/app (dc "id") x))
-          (t/lambda [[a P] [b P] [ha (proposition a)] [hb (proposition b)] [rho Rho] [x r/R]]
-            (t/app (dc "add") (function-at rho a) (function-at rho b)
-              (eval-real x rho (t/app (pc "deriv") a))
-              (eval-real x rho (t/app (pc "deriv") b)) x (t/app ha rho x) (t/app hb rho x)))
-          (t/lambda [[a P] [b P] [ha (proposition a)] [hb (proposition b)] [rho Rho] [x r/R]]
-            (t/app (dc "mul") (function-at rho a) (function-at rho b)
-              (eval-real x rho (t/app (pc "deriv") a))
-              (eval-real x rho (t/app (pc "deriv") b)) x (t/app ha rho x) (t/app hb rho x)))
-          (t/lambda [[a P] [ha (proposition a)] [rho Rho] [x r/R]]
-            (t/app (dc "neg") (function-at rho a)
-              (eval-real x rho (t/app (pc "deriv") a)) x (t/app ha rho x)))
-          (t/lambda [[j Nat] [rho Rho] [x r/R]] (t/app (dc "const") (t/app rho j) x))
-          (t/lambda [[p k/int-type] [n Nat] [_rho Rho] [x r/R]]
-            (t/app (dc "const") (fraction p n) x)))))
-    (install-cast!))
+    (k/commit! install))
   :installed)
