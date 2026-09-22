@@ -68,61 +68,60 @@
                         (t/and-intro q rest2 full-open
                                      (t/and-intro r s intersections unions))))))
 
+(def ^:private decl (t/declarer prefix))
+
+(defn install
+  "Pure. Declares the space and continuity definitions and checked identity
+  and composition theorems into `ctx`."
+  [ctx]
+  (-> ctx
+      (decl :def "Space" (t/arrow t/type0 t/type0)
+            (t/lam "A" t/type0
+                   #(t/app (k/const "Subtype" u)
+                           (t/predicate (t/predicate %)) (space-predicate %))))
+      (decl :def "IsOpen"
+            (t/pi "A" t/type0 #(t/arrow (space %) (t/predicate (t/predicate %))))
+            (t/lam "A" t/type0
+                   (fn [a]
+                     (t/lam "space" (space a)
+                            #(t/app (k/const "Subtype.val" u)
+                                    (t/predicate (t/predicate a)) (space-predicate a) %)))))
+      (decl :def "Continuous"
+            (t/forall [[a t/type0] [b t/type0]]
+              (t/>-> (space a) (space b) (t/arrow a b) t/prop))
+            (t/lambda [[a t/type0] [b t/type0]
+                       [source (space a)] [target (space b)] [f (t/arrow a b)]]
+              (t/forall [[v (t/predicate b)]]
+                (let [preimage (t/lambda [[x a]] (t/app v (t/app f x)))]
+                  (t/arrow (t/app (opens b target) v)
+                           (t/app (opens a source) preimage))))))
+      (decl :thm "continuous_id"
+            (t/forall [[a t/type0] [sa (space a)]]
+              (continuous a a sa sa (t/lambda [[x a]] x)))
+            (t/lambda [[a t/type0] [sa (space a)]
+                       [v (t/predicate a)] [hv (t/app (opens a sa) v)]]
+              hv))
+      (decl :thm "continuous_comp"
+            (t/forall [[a t/type0] [b t/type0] [c t/type0]
+                       [sa (space a)] [sb (space b)] [sc (space c)]
+                       [f (t/arrow a b)] [g (t/arrow b c)]]
+              (t/arrow (continuous a b sa sb f)
+                       (t/arrow (continuous b c sb sc g)
+                                (continuous a c sa sc
+                                            (t/lambda [[x a]] (t/app g (t/app f x)))))))
+            (t/lambda [[a t/type0] [b t/type0] [c t/type0]
+                       [sa (space a)] [sb (space b)] [sc (space c)]
+                       [f (t/arrow a b)] [g (t/arrow b c)]
+                       [hf (continuous a b sa sb f)]
+                       [hg (continuous b c sb sc g)]
+                       [v (t/predicate c)] [hv (t/app (opens c sc) v)]]
+              (t/app hf (t/lambda [[y b]] (t/app v (t/app g y))) (t/app hg v hv))))))
+
 (defn install!
   "Installs the space and continuity definitions and checked identity and
   composition theorems. Returns :installed; requires only bundled Init."
   []
   (k/ensure-init!)
   (locking k/install-lock
-    (when-not (k/installed? (str prefix "Space"))
-      (t/install-declaration!
-       :def (str prefix "Space") (t/arrow t/type0 t/type0)
-       (t/lam "A" t/type0
-              #(t/app (k/const "Subtype" u)
-                      (t/predicate (t/predicate %)) (space-predicate %)))))
-    (when-not (k/installed? (str prefix "IsOpen"))
-      (t/install-declaration!
-       :def (str prefix "IsOpen")
-       (t/pi "A" t/type0 #(t/arrow (space %) (t/predicate (t/predicate %))))
-       (t/lam "A" t/type0
-              (fn [a]
-                (t/lam "space" (space a)
-                       #(t/app (k/const "Subtype.val" u)
-                               (t/predicate (t/predicate a)) (space-predicate a) %))))))
-    (when-not (k/installed? (str prefix "Continuous"))
-      (t/install-declaration!
-       :def (str prefix "Continuous")
-       (t/forall [[a t/type0] [b t/type0]]
-         (t/>-> (space a) (space b) (t/arrow a b) t/prop))
-       (t/lambda [[a t/type0] [b t/type0]
-                  [source (space a)] [target (space b)] [f (t/arrow a b)]]
-         (t/forall [[v (t/predicate b)]]
-           (let [preimage (t/lambda [[x a]] (t/app v (t/app f x)))]
-             (t/arrow (t/app (opens b target) v)
-                      (t/app (opens a source) preimage)))))))
-    (when-not (k/installed? (str prefix "continuous_id"))
-      (t/install-declaration!
-       :thm (str prefix "continuous_id")
-       (t/forall [[a t/type0] [sa (space a)]]
-         (continuous a a sa sa (t/lambda [[x a]] x)))
-       (t/lambda [[a t/type0] [sa (space a)]
-                  [v (t/predicate a)] [hv (t/app (opens a sa) v)]]
-         hv)))
-    (when-not (k/installed? (str prefix "continuous_comp"))
-      (t/install-declaration!
-       :thm (str prefix "continuous_comp")
-       (t/forall [[a t/type0] [b t/type0] [c t/type0]
-                  [sa (space a)] [sb (space b)] [sc (space c)]
-                  [f (t/arrow a b)] [g (t/arrow b c)]]
-         (t/arrow (continuous a b sa sb f)
-                  (t/arrow (continuous b c sb sc g)
-                           (continuous a c sa sc
-                                       (t/lambda [[x a]] (t/app g (t/app f x)))))))
-       (t/lambda [[a t/type0] [b t/type0] [c t/type0]
-                  [sa (space a)] [sb (space b)] [sc (space c)]
-                  [f (t/arrow a b)] [g (t/arrow b c)]
-                  [hf (continuous a b sa sb f)]
-                  [hg (continuous b c sb sc g)]
-                  [v (t/predicate c)] [hv (t/app (opens c sc) v)]]
-         (t/app hf (t/lambda [[y b]] (t/app v (t/app g y))) (t/app hg v hv))))))
+    (k/commit! install))
   :installed)
