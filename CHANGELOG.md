@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+- repairs the Ansatz Mathlib compatibility facade: `MetricSpace` now aliases
+  the checked metric-space structure, and the misleading proposition-valued
+  `fderiv` adapter is replaced by the explicitly deprecated
+  `derivative-witness` helper; stale placeholder declarations are rejected
+  instead of being silently reused
+
 - fixes the derivative of `(expt x 0)` in `emmy.generic`: `D` of
   `(fn [x] (expt (- x x) 0))` threw "Divide by zero" (in both forward and
   reverse mode) because the rule computed `0 * x^-1`; it now returns 0

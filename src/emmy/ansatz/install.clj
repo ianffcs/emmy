@@ -33,8 +33,10 @@
     emmy.ansatz.analysis.topology
     emmy.ansatz.analysis.qfield
     emmy.ansatz.analysis.reals
+    emmy.ansatz.analysis.metric
     emmy.ansatz.analysis.real-topology
     emmy.ansatz.analysis.derivative
+    emmy.ansatz.analysis.mathlib
     emmy.ansatz.analysis.lagrange
     emmy.ansatz.expression
     emmy.ansatz.calculus

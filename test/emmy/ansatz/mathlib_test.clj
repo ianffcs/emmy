@@ -16,12 +16,17 @@
              "HasDerivAt" "Continuous" "ContinuousAt" "TendsToAt"]]
     (testing n
       (let [{:keys [kind statement proof]}
-            (t/declaration (str "Emmy.Mathlib." n))]
+            (t/declaration (k/base-ctx) (str "Emmy.Mathlib." n))]
         (is (= :def kind))
         (is (some? (env/check-constant
                     (k/env)
                     (env/mk-def (name/from-string
-                                 (str "test.Mathlib." n)) [] statement proof))))))))
+                                 (str "test.Mathlib." n)) [] statement proof)))))))
+  (let [{:keys [statement proof]}
+        (t/declaration (k/base-ctx) "Emmy.Mathlib.MetricSpace")]
+    (testing "MetricSpace is a checked structure alias, not True"
+      (is (= (t/arrow t/type0 t/prop) statement))
+      (is (re-find #"Emmy.Analysis.Metric.MetricSpace" (pr-str proof))))))
 
 (deftest adapters-preserve-physlib-propositions
   (m/install!)
@@ -31,6 +36,11 @@
            (m/norm (r/sub x y)))))
   (is (= (m/has-deriv-at (t/lam "x" m/Real identity) (k/const "Emmy.Analysis.R.one")
                          (k/const "Emmy.Analysis.R.zero"))
-         (m/fderiv (t/lam "x" m/Real identity)
-                   (k/const "Emmy.Analysis.R.zero")
-                   (k/const "Emmy.Analysis.R.one")))))
+         (m/derivative-witness (t/lam "x" m/Real identity)
+                               (k/const "Emmy.Analysis.R.zero")
+                               (k/const "Emmy.Analysis.R.one")))))
+
+(deftest derivative-witness-is-explicitly-deprecated
+  (is (= "Use has-deriv-at; retained only for migration."
+         (:deprecated (meta #'m/derivative-witness))))
+  (is (nil? (resolve 'emmy.ansatz.analysis.mathlib/fderiv))))
