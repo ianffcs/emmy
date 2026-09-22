@@ -41,9 +41,7 @@
 (defn- eq-nat [a b] (k/eq-at Nat u a b))
 (defn- symm [ty a b h] (t/app (k/const "Eq.symm" u) ty a b h))
 
-(defn- declare! [kind label type value]
-  (when-not (k/installed? (str prefix label))
-    (t/install-declaration! kind (str prefix label) type value)))
+(def ^:private decl (t/declarer prefix))
 
 (defn update' "`p` with coordinate `i` replaced by `s`." [p i s]
   (t/app (c "update") p i s))
@@ -56,24 +54,25 @@
 
 ;; ## Coordinates
 
-(defn- install-coordinates! []
-  (declare! :def "update" (t/>-> Pt Nat R Pt)
+(defn- install-coordinates [ctx]
+  (-> ctx
+  (decl :def "update" (t/>-> Pt Nat R Pt)
     (t/lambda [[p Pt] [i Nat] [s R] [j Nat]]
       (t/app (k/const "ite" u) R (eq-nat j i) (t/app (k/const "Nat.decEq") j i)
              s (t/app p j))))
-  (declare! :thm "update_same"
+  (decl :thm "update_same"
     (t/forall [[p Pt] [i Nat] [s R]] (eq (t/app (update' p i s) i) s))
     (t/lambda [[p Pt] [i Nat] [s R]]
       (t/app (k/const "if_pos" u) (eq-nat i i) (t/app (k/const "Nat.decEq") i i)
              (t/app (k/const "Eq.refl" u) Nat i) R s (t/app p i))))
-  (declare! :thm "update_other"
+  (decl :thm "update_other"
     (t/forall [[p Pt] [i Nat] [j Nat] [s R]]
       (t/arrow (t/not' (eq-nat j i)) (eq (t/app (update' p i s) j) (t/app p j))))
     (t/lambda [[p Pt] [i Nat] [j Nat] [s R] [h (t/not' (eq-nat j i))]]
       (t/app (k/const "if_neg" u) (eq-nat j i) (t/app (k/const "Nat.decEq") j i)
              h R s (t/app p j))))
   ;; replacing a coordinate by its own value changes nothing
-  (declare! :thm "update_self"
+  (decl :thm "update_self"
     (t/forall [[p Pt] [i Nat]] (k/eq-at Pt u (update' p i (t/app p i)) p))
     (t/lambda [[p Pt] [i Nat]]
       (t/app (k/const "funext" u u) Nat (t/lambda [[_j Nat]] R)
@@ -96,7 +95,7 @@
                       (t/lam "hji" (t/not' (eq-nat j i))
                              #(t/app (c "update_other") p i j (t/app p i) %)))))))
   ;; a pointwise equal function has the same derivative
-  (declare! :thm "hasDerivAt_congr"
+  (decl :thm "hasDerivAt_congr"
     (t/forall [[f FnR] [g FnR] [dv R] [x R]]
       (t/>-> (t/forall [[y R]] (eq (t/app f y) (t/app g y)))
              (d/has-deriv-at f dv x)
@@ -106,23 +105,24 @@
                [hf (d/has-deriv-at f dv x)]]
       (t/transport-at FnR u (t/lambda [[phi FnR]] (d/has-deriv-at phi dv x)) f g
                       (t/app (k/const "funext" u u) R (t/lambda [[_y R]] R) f g h)
-                      hf))))
+                      hf)))))
 
 ;; ## Partial derivatives
 
-(defn- install-partials! []
-  (declare! :def "HasPartialDerivAt"
+(defn- install-partials [ctx]
+  (-> ctx
+  (decl :def "HasPartialDerivAt"
     (t/arrow PtR (t/arrow Nat (t/arrow R (t/arrow Pt t/prop))))
     (t/lambda [[f PtR] [i Nat] [dv R] [p Pt]]
       (d/has-deriv-at (t/lam "s" R #(t/app f (update' p i %))) dv (t/app p i))))
   ;; constants have vanishing partials
-  (declare! :thm "partial_const"
+  (decl :thm "partial_const"
     (t/forall [[a R] [i Nat] [p Pt]]
       (has-partial (t/lam "q" Pt (fn [_] a)) i r/zero p))
     (t/lambda [[a R] [i Nat] [p Pt]]
       (t/app (dc "const") a (t/app p i))))
   ;; ∂xᵢ/∂xᵢ = 1
-  (declare! :thm "partial_proj_same"
+  (decl :thm "partial_proj_same"
     (t/forall [[i Nat] [p Pt]]
       (has-partial (t/lam "q" Pt #(t/app % i)) i r/one p))
     (t/lambda [[i Nat] [p Pt]]
@@ -132,7 +132,7 @@
                                        (t/app (c "update_same") p i y)))
                (t/app (dc "id") (t/app p i))))))
   ;; ∂xⱼ/∂xᵢ = 0 for j ≠ i
-  (declare! :thm "partial_proj_other"
+  (decl :thm "partial_proj_other"
     (t/forall [[i Nat] [j Nat] [p Pt]]
       (t/arrow (t/not' (eq-nat j i))
                (has-partial (t/lam "q" Pt #(t/app % j)) i r/zero p)))
@@ -144,7 +144,7 @@
                                        (t/app (c "update_other") p i j y h)))
                (t/app (dc "const") (t/app p j) (t/app p i))))))
   ;; partials are additive: the slices add pointwise
-  (declare! :thm "partial_add"
+  (decl :thm "partial_add"
     (t/forall [[f PtR] [g PtR] [df R] [dg R] [i Nat] [p Pt]]
       (t/arrow (has-partial f i df p)
                (t/arrow (has-partial g i dg p)
@@ -155,21 +155,22 @@
       (t/app (dc "add")
              (t/lam "s" R #(t/app f (update' p i %)))
              (t/lam "s" R #(t/app g (update' p i %)))
-             df dg (t/app p i) hf hg))))
+             df dg (t/app p i) hf hg)))))
 
 ;; ## Curves into ℝⁿ
 
-(defn- install-curves! []
-  (declare! :def "HasCurveDerivAt"
+(defn- install-curves [ctx]
+  (-> ctx
+  (decl :def "HasCurveDerivAt"
     (t/arrow (t/arrow R Pt) (t/arrow Pt (t/arrow R t/prop)))
     (t/lambda [[g (t/arrow R Pt)] [v Pt] [x R]]
       (t/forall [[i Nat]] (d/has-deriv-at (t/lam "s" R #(t/app (t/app g %) i)) (t/app v i) x))))
-  (declare! :thm "curve_const"
+  (decl :thm "curve_const"
     (t/forall [[p Pt] [x R]]
       (has-curve-deriv (t/lam "s" R (fn [_] p)) (t/lam "i" Nat (fn [_] r/zero)) x))
     (t/lambda [[p Pt] [x R] [i Nat]]
       (t/app (dc "const") (t/app p i) x)))
-  (declare! :thm "curve_add"
+  (decl :thm "curve_add"
     (t/forall [[g (t/arrow R Pt)] [h (t/arrow R Pt)] [v Pt] [w Pt] [x R]]
       (t/arrow (has-curve-deriv g v x)
                (t/arrow (has-curve-deriv h w x)
@@ -182,18 +183,24 @@
       (t/app (dc "add")
              (t/lam "s" R #(t/app (t/app g %) i))
              (t/lam "s" R #(t/app (t/app h %) i))
-             (t/app v i) (t/app w i) x (t/app hg i) (t/app hh i)))))
+             (t/app v i) (t/app w i) x (t/app hg i) (t/app hh i))))))
 
 ;; ## The Euler–Lagrange equation for one degree of freedom
 
-(defn- install-euler-lagrange! []
-  ;; scalar multiples: (a·f)' = a·f'
+(defn- install-ring!
+  "IO edge: registers the LagrangeRing identities `install-euler-lagrange`'s
+  proofs rely on into `reals.clj`'s global ring-normalization table."
+  []
+  (r/ring-identity! "LagrangeRing.square_value" '[v] '(+ (* 1 v) (* v 1)) '(+ v v))
   (r/ring-identity! "LagrangeRing.scale_value" '[fx a df]
                     '(+ (* 0 fx) (* a df)) '(* a df))
   (r/ring-identity! "LagrangeRing.kinetic_expand" '[h m w]
                     '(* (* h m) (+ w w)) '(+ (* h (* m w)) (* h (* m w))))
-  (r/ring-identity! "LagrangeRing.mul_zero" '[m] '(* m 0) '0)
-  (declare! :thm "scale"
+  (r/ring-identity! "LagrangeRing.mul_zero" '[m] '(* m 0) '0))
+
+(defn- install-euler-lagrange [ctx]
+  (-> ctx
+  (decl :thm "scale"
     (t/forall [[a R] [f FnR] [df R] [x R]]
       (t/arrow (d/has-deriv-at f df x)
                (d/has-deriv-at (t/lam "y" R #(r/mul a (t/app f %))) (r/mul a df) x)))
@@ -206,7 +213,7 @@
                         (t/app (rc "LagrangeRing.scale_value") (t/app f x) a df)
                         (t/app (dc "mul") k f r/zero df x (t/app (dc "const") a x) hf)))))
   ;; the momentum of the free particle is derived from its kinetic energy
-  (declare! :thm "kinetic_momentum"
+  (decl :thm "kinetic_momentum"
     (t/forall [[m R] [v R]]
       (d/has-deriv-at (t/lam "w" R #(r/mul (r/mul r/half m) (r/mul % %))) (r/mul m v) v))
     (t/lambda [[m R] [v R]]
@@ -229,26 +236,26 @@
                                (t/app (rc "half_add_half") (r/mul m v)))
                         scaled))))
   ;; the free Lagrangian does not depend on position, so the force vanishes
-  (declare! :thm "kinetic_force"
+  (decl :thm "kinetic_force"
     (t/forall [[m R] [v R] [q R]]
       (d/has-deriv-at (t/lam "y" R (fn [_] (r/mul (r/mul r/half m) (r/mul v v)))) r/zero q))
     (t/lambda [[m R] [v R] [q R]]
       (t/app (dc "const") (r/mul (r/mul r/half m) (r/mul v v)) q)))
   ;; d/dt (∂L/∂v) = ∂L/∂q along the path
-  (declare! :def "ELPath" (t/arrow FnR (t/arrow FnR t/prop))
+  (decl :def "ELPath" (t/arrow FnR (t/arrow FnR t/prop))
     (t/lambda [[P FnR] [F FnR]]
       (t/forall [[x R]]
         (t/exists' R (t/lambda [[dP R]]
                        (t/and' (d/has-deriv-at P dP x) (eq dP (t/app F x))))))))
   ;; the momentum m·v of a path with acceleration a has derivative m·a
-  (declare! :thm "momentum_deriv"
+  (decl :thm "momentum_deriv"
     (t/forall [[m R] [v FnR] [a R] [x R]]
       (t/arrow (d/has-deriv-at v a x)
                (d/has-deriv-at (t/lam "s" R #(r/mul m (t/app v %))) (r/mul m a) x)))
     (t/lambda [[m R] [v FnR] [a R] [x R] [hv (d/has-deriv-at v a x)]]
       (t/app (c "scale") m v a x hv)))
   ;; uniform motion solves the Euler–Lagrange equation of the free particle
-  (declare! :thm "free_particle_uniform"
+  (decl :thm "free_particle_uniform"
     (t/forall [[m R] [q FnR] [v FnR]]
       (t/arrow (t/forall [[x R]] (d/has-deriv-at q (t/app v x) x))
                (t/arrow (t/forall [[x R]] (d/has-deriv-at v r/zero x))
@@ -265,7 +272,17 @@
                         (t/and-intro (d/has-deriv-at P (r/mul m r/zero) x)
                                      (eq (r/mul m r/zero) (t/app F x))
                                      (t/app (c "momentum_deriv") m v r/zero x (t/app ha x))
-                                     (t/app (rc "LagrangeRing.mul_zero") m)))))))
+                                     (t/app (rc "LagrangeRing.mul_zero") m))))))))
+
+(defn install
+  "Pure. Declares finite-dimensional partial derivatives, curve derivatives
+  and the one-degree-of-freedom Euler–Lagrange interface into `ctx`."
+  [ctx]
+  (-> ctx
+      install-coordinates
+      install-partials
+      install-curves
+      install-euler-lagrange))
 
 (defn install!
   "Installs finite-dimensional partial derivatives, curve derivatives and the
@@ -273,9 +290,6 @@
   []
   (locking k/install-lock
     (d/install!)
-    (r/ring-identity! "LagrangeRing.square_value" '[v] '(+ (* 1 v) (* v 1)) '(+ v v))
-    (install-coordinates!)
-    (install-partials!)
-    (install-curves!)
-    (install-euler-lagrange!))
+    (install-ring!)
+    (k/commit! install))
   :installed)

@@ -61,25 +61,24 @@
 (defn- union [family]
   (t/lambda [[x R]]
     (t/exists' SetR (t/lambda [[s SetR]] (t/and' (t/app family s) (t/app s x))))))
-(defn- declare! [kind label type value]
-  (when-not (k/installed? (str prefix label))
-    (t/install-declaration! kind (str prefix label) type value)))
+(def ^:private decl (t/declarer prefix))
 
-(defn- install-space! []
+(defn- install-space [ctx]
   (let [empty-set (t/lam "x" R (fn [_] t/false-prop))
         full-set (t/lam "x" R (fn [_] (k/const "True")))]
-    (declare! :def "Ball" (t/arrow R (t/arrow R SetR))
+    (-> ctx
+    (decl :def "Ball" (t/arrow R (t/arrow R SetR))
       (t/lambda [[x R] [eps R] [y R]] (r/lt (dist y x) eps)))
-    (declare! :def "IsOpen" (t/predicate SetR)
+    (decl :def "IsOpen" (t/predicate SetR)
       (t/lambda [[s SetR]]
         (t/forall [[x R]] (t/arrow (t/app s x) (local s x)))))
-    (declare! :thm "isOpen_empty" (is-open empty-set)
+    (decl :thm "isOpen_empty" (is-open empty-set)
       (t/lambda [[x R] [h t/false-prop]] (t/false-elim (local empty-set x) h)))
-    (declare! :thm "isOpen_univ" (is-open full-set)
+    (decl :thm "isOpen_univ" (is-open full-set)
       (t/lambda [[x R] [_hx (k/const "True")]]
         (local-intro full-set x r/one (rc "zero_lt_one")
           (t/lambda [[y R] [_hy (r/lt (dist y x) r/one)]] (k/const "True.intro")))))
-    (declare! :thm "isOpen_inter"
+    (decl :thm "isOpen_inter"
       (t/forall [[a SetR] [b SetR]]
         (t/arrow (is-open a) (t/arrow (is-open b) (is-open (intersection a b)))))
       (t/lambda [[a SetR] [b SetR] [ha (is-open a)] [hb (is-open b)]
@@ -94,7 +93,7 @@
                 (t/and-intro (t/app a y) (t/app b y)
                   (t/app hall-a y (t/app (rc "lt_trans") (dist y x) d da hy hda'))
                   (t/app hall-b y (t/app (rc "lt_trans") (dist y x) d db hy hdb')))))))))
-    (declare! :thm "isOpen_sUnion"
+    (decl :thm "isOpen_sUnion"
       (t/forall [[family (t/predicate SetR)]]
         (t/arrow (t/forall [[s SetR]] (t/arrow (t/app family s) (is-open s)))
                  (is-open (union family))))
@@ -113,17 +112,18 @@
                       (t/exists-intro SetR
                         (t/lambda [[v SetR]] (t/and' (t/app family v) (t/app v y))) s
                         (t/and-intro (t/app family s) (t/app s y) member (t/app hall y hy))))))))))))
-    (declare! :def "space" (top/space R)
+    (decl :def "space" (top/space R)
       (top/space-intro R (c "IsOpen") (c "isOpen_empty") (c "isOpen_univ")
-                       (c "isOpen_inter") (c "isOpen_sUnion")))))
+                       (c "isOpen_inter") (c "isOpen_sUnion"))))))
 
-(defn- install-balls! []
-  (declare! :thm "mem_ball_self"
+(defn- install-balls [ctx]
+  (-> ctx
+  (decl :thm "mem_ball_self"
     (t/forall [[x R] [eps R]] (t/arrow (pos eps) (t/app (ball x eps) x)))
     (t/lambda [[x R] [eps R] [he (pos eps)]]
       (t/transport-at R u (t/lambda [[z R]] (r/lt z eps)) r/zero (dist x x)
         (t/app (k/const "Eq.symm" u) R (dist x x) r/zero (t/app (rc "abs_sub_self") x)) he)))
-  (declare! :thm "isOpen_ball"
+  (decl :thm "isOpen_ball"
     (t/forall [[center R] [eps R]] (is-open (ball center eps)))
     (t/lambda [[center R] [eps R] [x R] [hx (t/app (ball center eps) x)]]
       (let [s (ball center eps) goal (local s x)
@@ -139,12 +139,12 @@
                 (t/lambda [[y R] [hy (r/lt (dist y x) delta)]]
                   (t/transport-at R u (t/lambda [[z R]] (r/lt (dist y center) z))
                     (r/add delta b) eps (t/app (rc "sub_add_cancel") eps b)
-                    (t/app (rc "dist_triangle_lt") y x center delta b hy hxb)))))))))))
+                    (t/app (rc "dist_triangle_lt") y x center delta b hy hxb))))))))))))
 
-(defn- install-bridge! []
+(defn- install-bridge [ctx]
   (let [analytic #(t/app (rc "Continuous") %)
         topological #(top/continuous R R real-space real-space %)]
-    (declare! :thm "continuous_iff"
+    (decl ctx :thm "continuous_iff"
       (t/forall [[f FnR]] (t/iff (analytic f) (topological f)))
       (t/lambda [[f FnR]]
         (t/iff-intro (analytic f) (topological f)
@@ -162,6 +162,15 @@
               (t/app hf s (t/app (c "isOpen_ball") fx eps) x
                      (t/app (c "mem_ball_self") fx eps he)))))))))
 
+(defn install
+  "Pure. Declares real epsilon-ball opens, the topology, and the two-way
+  continuity bridge into `ctx`."
+  [ctx]
+  (-> ctx
+      install-space
+      install-balls
+      install-bridge))
+
 (defn install!
   "Installs real epsilon-ball opens, the topology, and the two-way continuity
   bridge. Idempotent; requires only the independent constructed real library."
@@ -169,7 +178,5 @@
   (locking k/install-lock
     (r/install!)
     (top/install!)
-    (install-space!)
-    (install-balls!)
-    (install-bridge!))
+    (k/commit! install))
   :installed)

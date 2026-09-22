@@ -40,9 +40,7 @@
   "Kernel proposition: f has derivative d at x."
   [f d x]
   (t/app (c "HasDerivAt") f d x))
-(defn- declare! [kind label type value]
-  (when-not (k/installed? (str prefix label))
-    (t/install-declaration! kind (str prefix label) type value)))
+(def ^:private decl (t/declarer prefix))
 (defn- body [f x L eps d]
   (t/forall [[y R]]
     (t/arrow (pos (distance y x))
@@ -85,8 +83,9 @@
             '(+ (- a (* df c)) (* df (- c (* dg h)))) '(- a (* (* df dg) h))]]]
     (r/ring-identity! (str "DerivativeRing." label) vars lhs rhs)))
 
-(defn- install-limit-tools! []
-  (declare! :thm "step_ne_zero"
+(defn- install-limit-tools [ctx]
+  (-> ctx
+    (decl :thm "step_ne_zero"
     (t/forall [[x R] [y R]]
       (t/arrow (pos (distance y x)) (t/not' (eq (r/sub y x) r/zero))))
     (t/lambda [[x R] [y R] [h (pos (distance y x))] [hz (eq (r/sub y x) r/zero)]]
@@ -95,7 +94,7 @@
             impossible (t/transport-at R u (t/lambda [[z R]] (pos z))
                          (distance y y) r/zero (t/app (rc "abs_sub_self") y) hy)]
         (t/app (rc "lt_irrefl") r/zero impossible))))
-  (declare! :thm "tendsto_congr"
+  (decl :thm "tendsto_congr"
     (t/forall [[f FnR] [g FnR] [x R] [L R]]
       (t/arrow (t/forall [[y R]] (t/arrow (pos (distance y x)) (eq (t/app f y) (t/app g y))))
         (t/arrow (r/tends-to-at f x L) (r/tends-to-at g x L))))
@@ -107,7 +106,7 @@
           (t/lambda [[y R] [hy0 (pos (distance y x))] [hy (r/lt (distance y x) d)]]
             (t/transport-at R u (t/lambda [[z R]] (r/lt (distance z L) eps))
               (t/app f y) (t/app g y) (t/app heq y hy0) (t/app hall y hy0 hy)))))))
-  (declare! :thm "divide_mul_cancel"
+  (decl :thm "divide_mul_cancel"
     (t/forall [[a R] [b R]]
       (t/arrow (t/not' (eq b r/zero)) (eq (r/mul (r/mul a (r/inv b)) b) a)))
     (t/lambda [[a R] [b R] [hb (t/not' (eq b r/zero))]]
@@ -118,21 +117,22 @@
             h2 (t/app (rc "mul_congr_fst") a (r/mul b (r/inv b)) r/one
                       (t/app (rc "mul_inv_cancel") b hb))]
         (t/app (k/const "Eq.trans" u) R lhs mid a h1
-          (t/app (k/const "Eq.trans" u) R mid right a h2 (t/app (rc "one_mul") a)))))))
+          (t/app (k/const "Eq.trans" u) R mid right a h2 (t/app (rc "one_mul") a))))))))
 
-(defn- install-elementary! []
-  (declare! :def "slope" (t/arrow FnR (t/arrow R FnR))
+(defn- install-elementary [ctx]
+  (-> ctx
+  (decl :def "slope" (t/arrow FnR (t/arrow R FnR))
     (t/lambda [[f FnR] [x R] [y R]]
       (r/mul (r/sub (t/app f y) (t/app f x)) (r/inv (r/sub y x)))))
-  (declare! :def "HasDerivAt" (t/arrow FnR (t/arrow R (t/arrow R t/prop)))
+  (decl :def "HasDerivAt" (t/arrow FnR (t/arrow R (t/arrow R t/prop)))
     (t/lambda [[f FnR] [d R] [x R]] (r/tends-to-at (slope f x) x d)))
-  (declare! :thm "unique"
+  (decl :thm "unique"
     (t/forall [[f FnR] [d R] [e R] [x R]]
       (t/arrow (has-deriv-at f d x) (t/arrow (has-deriv-at f e x) (eq d e))))
     (t/lambda [[f FnR] [d R] [e R] [x R]
                [hd (has-deriv-at f d x)] [he (has-deriv-at f e x)]]
       (t/app (rc "tendsto_unique") (slope f x) x d e hd he)))
-  (declare! :thm "const"
+  (decl :thm "const"
     (t/forall [[a R] [x R]] (has-deriv-at (t/lam "y" R (fn [_] a)) r/zero x))
     (t/lambda [[a R] [x R]]
       (let [f (t/lam "y" R (fn [_] a)) z (t/lam "y" R (fn [_] r/zero))]
@@ -140,7 +140,7 @@
           (t/lambda [[y R] [_hy (pos (distance y x))]]
             (symm (t/app (slope f x) y) r/zero (ring "slope_const" a (r/inv (r/sub y x)))))
           (t/app (rc "tendsto_const") r/zero x)))))
-  (declare! :thm "id"
+  (decl :thm "id"
     (t/forall [[x R]] (has-deriv-at (t/lam "y" R identity) r/one x))
     (t/lambda [[x R]]
       (let [f (t/lam "y" R identity) one-fn (t/lam "y" R (fn [_] r/one))]
@@ -149,7 +149,7 @@
             (symm (t/app (slope f x) y) r/one
               (t/app (rc "mul_inv_cancel") (r/sub y x) (t/app (c "step_ne_zero") x y hy))))
           (t/app (rc "tendsto_const") r/one x)))))
-  (declare! :thm "add"
+  (decl :thm "add"
     (t/forall [[f FnR] [g FnR] [df R] [dg R] [x R]]
       (t/arrow (has-deriv-at f df x) (t/arrow (has-deriv-at g dg x)
         (has-deriv-at (t/lambda [[y R]] (r/add (t/app f y) (t/app g y))) (r/add df dg) x))))
@@ -162,7 +162,7 @@
             (symm (t/app (slope h x) y) (t/app sum y)
               (ring "slope_add" (t/app f y) (t/app f x) (t/app g y) (t/app g x) (r/inv (r/sub y x)))))
           (t/app (rc "tendsto_add") (slope f x) (slope g x) x df dg hf hg)))))
-  (declare! :thm "neg"
+  (decl :thm "neg"
     (t/forall [[f FnR] [df R] [x R]]
       (t/arrow (has-deriv-at f df x)
         (has-deriv-at (t/lambda [[y R]] (r/neg (t/app f y))) (r/neg df) x)))
@@ -173,10 +173,11 @@
           (t/lambda [[y R] [_hy (pos (distance y x))]]
             (symm (t/app (slope h x) y) (t/app negative y)
               (ring "slope_neg" (t/app f y) (t/app f x) (r/inv (r/sub y x)))))
-          (t/app (rc "tendsto_neg") (slope f x) x df hf))))))
+          (t/app (rc "tendsto_neg") (slope f x) x df hf)))))))
 
-(defn- install-product! []
-  (declare! :thm "tendsto_step"
+(defn- install-product [ctx]
+  (-> ctx
+  (decl :thm "tendsto_step"
     (t/forall [[x R]] (r/tends-to-at (t/lambda [[y R]] (r/sub y x)) x r/zero))
     (t/lambda [[x R]]
       (let [id (t/lam "y" R identity)
@@ -188,7 +189,7 @@
                       (t/app (rc "tendsto_id") x) hn)]
         (t/transport-at R u (t/lambda [[L R]] (r/tends-to-at step x L))
           (r/sub x x) r/zero (t/app (rc "sub_self") x) hs))))
-  (declare! :thm "reconstruct"
+  (decl :thm "reconstruct"
     (t/forall [[f FnR] [x R] [y R]]
       (t/arrow (pos (distance y x))
         (eq (r/add (t/app f x) (r/mul (r/sub y x) (t/app (slope f x) y))) (t/app f y))))
@@ -203,7 +204,7 @@
         (t/app (k/const "Eq.trans" u) R lhs middle a
           (ring "reconstruct_reorder" a b h (r/inv h))
           (t/app (k/const "Eq.trans" u) R middle last a congr (ring "reconstruct_add" a b))))))
-  (declare! :thm "tendsto_of_hasDerivAt"
+  (decl :thm "tendsto_of_hasDerivAt"
     (t/forall [[f FnR] [d R] [x R]]
       (t/arrow (has-deriv-at f d x) (r/tends-to-at f x (t/app f x))))
     (t/lambda [[f FnR] [d R] [x R] [hf (has-deriv-at f d x)]]
@@ -220,12 +221,12 @@
                     (r/add fx (r/mul r/zero d)) fx (ring "limit_reconstruct" fx d) hs)]
         (t/app (c "tendsto_congr") reconstructed f x fx
           (t/lambda [[y R] [hy (pos (distance y x))]] (t/app (c "reconstruct") f x y hy)) limit))))
-  (declare! :thm "continuousAt"
+  (decl :thm "continuousAt"
     (t/forall [[f FnR] [d R] [x R]]
       (t/arrow (has-deriv-at f d x) (r/continuous-at f x)))
     (t/lambda [[f FnR] [d R] [x R] [hf (has-deriv-at f d x)]]
       (t/app (rc "continuousAt_of_tendsto") f x (t/app (c "tendsto_of_hasDerivAt") f d x hf))))
-  (declare! :thm "mul"
+  (decl :thm "mul"
     (t/forall [[f FnR] [g FnR] [df R] [dg R] [x R]]
       (t/arrow (has-deriv-at f df x) (t/arrow (has-deriv-at g dg x)
         (has-deriv-at (t/lambda [[y R]] (r/mul (t/app f y) (t/app g y)))
@@ -247,10 +248,11 @@
           (t/lambda [[y R] [_hy (pos (distance y x))]]
             (symm (t/app (slope h x) y) (t/app sum y)
               (ring "slope_mul" (t/app f y) fx (t/app g y) gx (r/inv (r/sub y x)))))
-          (t/app (rc "tendsto_add") left right x dl dr hl hr))))))
+          (t/app (rc "tendsto_add") left right x dl dr hl hr)))))))
 
-(defn- install-scaling! []
-  (declare! :thm "mul_lt_mul_right"
+(defn- install-scaling [ctx]
+  (-> ctx
+  (decl :thm "mul_lt_mul_right"
     (t/forall [[a R] [b R] [s R]]
       (t/arrow (r/lt a b) (t/arrow (pos s) (r/lt (r/mul a s) (r/mul b s)))))
     (t/lambda [[a R] [b R] [s R] [hab (r/lt a b)] [hs (pos s)]]
@@ -259,14 +261,14 @@
         (t/transport-at R u (t/lambda [[z R]] (r/positive z)) product
           (r/sub (r/mul b s) (r/mul a s)) (ring "scale_difference" a b s)
           (t/app (rc "positive_of_lt_zero") product hp)))))
-  (declare! :thm "scale_cancel"
+  (decl :thm "scale_cancel"
     (t/forall [[a R] [s R]]
       (t/arrow (pos s) (eq (r/mul (r/mul a s) (r/inv s)) a)))
     (t/lambda [[a R] [s R] [hs (pos s)]]
       (t/app (k/const "Eq.trans" u) R (r/mul (r/mul a s) (r/inv s))
         (r/mul s (r/mul (r/inv s) a)) a (ring "scale_cancel" a s (r/inv s))
         (t/app (rc "mul_inv_mul") s a hs))))
-  (declare! :thm "lt_of_mul_lt_mul_right"
+  (decl :thm "lt_of_mul_lt_mul_right"
     (t/forall [[a R] [b R] [s R]]
       (t/arrow (r/lt (r/mul a s) (r/mul b s)) (t/arrow (pos s) (r/lt a b))))
     (t/lambda [[a R] [b R] [s R] [hab (r/lt (r/mul a s) (r/mul b s))] [hs (pos s)]]
@@ -277,7 +279,7 @@
             hleft (t/transport-at R u (t/lambda [[z R]] (r/lt z right)) left a
                     (t/app (c "scale_cancel") a s hs) scaled)]
         (t/transport-at R u (t/lambda [[z R]] (r/lt a z)) right b
-          (t/app (c "scale_cancel") b s hs) hleft)))))
+          (t/app (c "scale_cancel") b s hs) hleft))))))
 
 (defn remainder "The first-order residual at y: f(y)-f(x)-d*(y-x)." [f d x y]
   (r/sub (r/sub (t/app f y) (t/app f x)) (r/mul d (r/sub y x))))
@@ -289,12 +291,13 @@
 (defn- residual-predicate [f d x eps]
   (t/lambda [[delta R]] (t/and' (pos delta) (residual-body f d x eps delta))))
 
-(defn- install-remainder! []
-  (declare! :def "RemainderBound" (t/arrow FnR (t/arrow R (t/arrow R t/prop)))
+(defn- install-remainder [ctx]
+  (-> ctx
+  (decl :def "RemainderBound" (t/arrow FnR (t/arrow R (t/arrow R t/prop)))
     (t/lambda [[f FnR] [d R] [x R]]
       (t/forall [[eps R]]
         (t/arrow (pos eps) (t/exists' R (residual-predicate f d x eps))))))
-  (declare! :thm "abs_remainder"
+  (decl :thm "abs_remainder"
     (t/forall [[f FnR] [d R] [x R] [y R]]
       (t/arrow (pos (distance y x))
         (eq (r/abs (remainder f d x y))
@@ -314,7 +317,7 @@
             abs-e (t/app (k/const "congrArg" u u) R R residual lhs (rc "abs") (symm lhs residual e))]
         (t/app (k/const "Eq.trans" u) R (r/abs residual) (r/abs lhs)
           (r/mul (r/abs err) (r/abs h)) abs-e (t/app (rc "abs_mul") err h)))))
-  (declare! :thm "remainder_iff"
+  (decl :thm "remainder_iff"
     (t/forall [[f FnR] [d R] [x R]]
       (t/iff (has-deriv-at f d x) (t/app (c "RemainderBound") f d x)))
     (t/lambda [[f FnR] [d R] [x R]]
@@ -345,7 +348,7 @@
                                     residual product (t/app (c "abs_remainder") f d x y hy0)
                                     (t/app hall y hy0 hy))]
                       (t/app (c "lt_of_mul_lt_mul_right") (distance (t/app (slope f x) y) d)
-                        eps (distance y x) hscaled hy0))))))))))))
+                        eps (distance y x) hscaled hy0)))))))))))))
 
 (defn- residual-proof [f d x h]
   (t/app (k/const "Iff.mp") (has-deriv-at f d x) (t/app (c "RemainderBound") f d x)
@@ -454,8 +457,8 @@
       sum-error final-error
       (ring "chain_error" (r/sub (t/app f gy) (t/app f gx)) (r/sub gy gx) df dg h) hs)))
 
-(defn- install-chain! []
-  (declare! :thm "comp"
+(defn- install-chain [ctx]
+  (decl ctx :thm "comp"
     (t/forall [[f FnR] [g FnR] [df R] [dg R] [x R]]
       (t/arrow (has-deriv-at f df (t/app g x))
         (t/arrow (has-deriv-at g dg x)
@@ -495,16 +498,22 @@
                         (chain-estimate f g df dg x y eps he hy0 do hall-o
                           (t/app hall-i y hy0 hi) (t/app hall-s y hy0 hs) (t/app hall-c y hc))))))))))))))
 
+(defn install
+  "Pure. Declares this namespace's checked derivative laws into `ctx`."
+  [ctx]
+  (-> ctx
+      install-limit-tools
+      install-elementary
+      install-product
+      install-scaling
+      install-remainder
+      install-chain))
+
 (defn install!
   "Installs analytic difference-quotient derivatives and the checked rules."
   []
   (locking k/install-lock
     (r/install!)
     (install-algebra!)
-    (install-limit-tools!)
-    (install-elementary!)
-    (install-product!)
-    (install-scaling!)
-    (install-remainder!)
-    (install-chain!))
+    (k/commit! install))
   :installed)
