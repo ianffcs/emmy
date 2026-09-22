@@ -238,13 +238,9 @@
 
 ;; ## Kernel theorems
 
-(defn- theorem! [label type proof]
-  (when-not (k/installed? (str prefix label))
-    (t/install-declaration! :thm (str prefix label) type proof)))
-
-(defn- define! [label type value]
-  (when-not (k/installed? (str prefix label))
-    (t/install-declaration! :def (str prefix label) type value)))
+(def ^:private decl (t/declarer prefix))
+(def ^:private theorem (t/with-kind decl :thm))
+(def ^:private define (t/with-kind decl :def))
 
 (defn abs "Kernel term `Emmy.Analysis.Int.abs a`." [x] (t/app (c "abs") x))
 
@@ -281,32 +277,30 @@
                            (branch neg (lt x k/zero) (k/eq (abs x) (k/neg x)))))))]
     (go (vec xs) [])))
 
-(defn install!
-  "Installs the `Int` order and absolute-value theorems. Idempotent."
-  []
-  (k/ensure-init!)
-  (alg/install!)
-  (locking k/install-lock
-    (theorem! "lt_trans"
+(defn install
+  "Pure. Declares the `Int` order and absolute-value theorems into `ctx`."
+  [ctx]
+  (as-> ctx ctx
+    (theorem ctx "lt_trans"
       (t/forall [[x I] [y I] [z I]] (t/arrow (lt x y) (t/arrow (lt y z) (lt x z))))
       (t/lambda [[x I] [y I] [z I] [h1 (lt x y)] [h2 (lt y z)]]
         (by-omega (lt x z) [[(lt x y) h1] [(lt y z) h2]])))
-    (theorem! "add_pos"
+    (theorem ctx "add_pos"
       (t/forall [[x I] [y I]] (t/arrow (lt k/zero x) (t/arrow (lt k/zero y) (lt k/zero (k/add x y)))))
       (t/lambda [[x I] [y I] [hx (lt k/zero x)] [hy (lt k/zero y)]]
         (by-omega (lt k/zero (k/add x y)) [[(lt k/zero x) hx] [(lt k/zero y) hy]])))
-    (theorem! "add_nonneg"
+    (theorem ctx "add_nonneg"
       (t/forall [[x I] [y I]] (t/arrow (le k/zero x) (t/arrow (le k/zero y) (le k/zero (k/add x y)))))
       (t/lambda [[x I] [y I] [hx (le k/zero x)] [hy (le k/zero y)]]
         (by-omega (le k/zero (k/add x y)) [[(le k/zero x) hx] [(le k/zero y) hy]])))
-    (theorem! "mul_nonneg"
+    (theorem ctx "mul_nonneg"
       (t/forall [[x I] [y I]] (t/arrow (le k/zero x) (t/arrow (le k/zero y) (le k/zero (k/mul x y)))))
       (t/lambda [[x I] [y I] [hx (le k/zero x)] [hy (le k/zero y)]]
         ;; x·0 ≤ x·y, then rewrite x·0 to 0
         (rewrite-prop #(le % (k/mul x y)) (k/mul x k/zero) k/zero
                       (t/app (k/const "Int.mul_le_mul_of_nonneg_left") k/zero y x hy hx))))
 
-    (theorem! "lt_of_mul_lt_mul_right"
+    (theorem ctx "lt_of_mul_lt_mul_right"
       (t/forall [[x I] [y I] [z I]]
         (t/arrow (lt k/zero z) (t/arrow (lt (k/mul x z) (k/mul y z)) (lt x y))))
       (t/lambda [[x I] [y I] [z I] [hz (lt k/zero z)] [h (lt (k/mul x z) (k/mul y z))]]
@@ -325,7 +319,7 @@
                                               (by-omega t/false-prop
                                                         [[(lt (k/mul x z) (k/mul y z)) h]
                                                          [(le (k/mul z y) (k/mul z x)) mono]])))))))))
-    (theorem! "mul_self_pos"
+    (theorem ctx "mul_self_pos"
       (t/forall [[x I]] (t/arrow (t/not' (k/eq x k/zero)) (lt k/zero (k/mul x x))))
       (t/lambda [[x I] [hne (t/not' (k/eq x k/zero))]]
         (let [goal (lt k/zero (k/mul x x))
@@ -345,7 +339,7 @@
                                          (t/lam "hp" pos
                                                 (fn [hp] (t/app (k/const "Int.mul_pos") x x hp hp))))))))))
 
-    (theorem! "le_of_mul_le_mul_right"
+    (theorem ctx "le_of_mul_le_mul_right"
       (t/forall [[x I] [y I] [z I]]
         (t/arrow (lt k/zero z) (t/arrow (le (k/mul x z) (k/mul y z)) (le x y))))
       (t/lambda [[x I] [y I] [z I] [hz (lt k/zero z)] [h (le (k/mul x z) (k/mul y z))]]
@@ -364,11 +358,11 @@
                                                         [[(le (k/mul x z) (k/mul y z)) h]
                                                          [(lt (k/mul z y) (k/mul z x)) mono]])))))))))
 
-    (define! "abs" (t/arrow I I)
+    (define ctx "abs" (t/arrow I I)
       (t/lambda [[x I]]
         (t/app (k/const "ite" l1) I (le k/zero x) (t/app (k/const "Int.decLe") k/zero x)
                x (k/neg x))))
-    (theorem! "abs_cases"
+    (theorem ctx "abs_cases"
       (t/forall [[x I]]
         (t/or' (t/and' (le k/zero x) (k/eq (abs x) x))
                (t/and' (lt x k/zero) (k/eq (abs x) (k/neg x)))))
@@ -393,7 +387,17 @@
                                                             (t/app (k/const "Int.not_le") k/zero x) h)
                                                      (t/app (k/const "if_neg" l1) nonneg inst h I
                                                             x (k/neg x))))))))))
-    (doseq [[label vars goal-fn abs-terms]
+    (reduce (fn [ctx [label vars goal-fn abs-terms]]
+              (theorem ctx label
+                (if (= 1 (count vars))
+                  (t/forall [[x I]] (goal-fn x))
+                  (t/forall [[x I] [y I]] (goal-fn x y)))
+                (if (= 1 (count vars))
+                  (t/lambda [[x I]]
+                    (with-abs-cases (abs-terms x) (goal-fn x) #(by-omega (goal-fn x) %)))
+                  (t/lambda [[x I] [y I]]
+                    (with-abs-cases (abs-terms x y) (goal-fn x y) #(by-omega (goal-fn x y) %))))))
+            ctx
             [["abs_nonneg" '[x] (fn [x] (le k/zero (abs x))) (fn [x] [x])]
              ["le_abs" '[x] (fn [x] (le x (abs x))) (fn [x] [x])]
              ["neg_le_abs" '[x] (fn [x] (le (k/neg x) (abs x))) (fn [x] [x])]
@@ -403,22 +407,13 @@
               (fn [x y] [x y (k/add x y)])]
              ["abs_sub_comm" '[x y]
               (fn [x y] (k/eq (abs (k/sub x y)) (abs (k/sub y x))))
-              (fn [x y] [(k/sub x y) (k/sub y x)])]]]
-      (theorem! label
-        (if (= 1 (count vars))
-          (t/forall [[x I]] (goal-fn x))
-          (t/forall [[x I] [y I]] (goal-fn x y)))
-        (if (= 1 (count vars))
-          (t/lambda [[x I]]
-            (with-abs-cases (abs-terms x) (goal-fn x) #(by-omega (goal-fn x) %)))
-          (t/lambda [[x I] [y I]]
-            (with-abs-cases (abs-terms x y) (goal-fn x y) #(by-omega (goal-fn x y) %))))))
-    (theorem! "abs_of_pos"
+              (fn [x y] [(k/sub x y) (k/sub y x)])]])
+    (theorem ctx "abs_of_pos"
       (t/forall [[x I]] (t/arrow (lt k/zero x) (k/eq (abs x) x)))
       (t/lambda [[x I] [h (lt k/zero x)]]
         (with-abs-cases [x] (k/eq (abs x) x)
           #(by-omega (k/eq (abs x) x) (conj % [(lt k/zero x) h])))))
-    (theorem! "abs_lt"
+    (theorem ctx "abs_lt"
       (t/forall [[x I] [b I]]
         (t/iff (lt (abs x) b) (t/and' (lt (k/neg b) x) (lt x b))))
       (t/lambda [[x I] [b I]]
@@ -438,7 +433,7 @@
                                     (by-omega lhs (conj facts
                                                         [(lt (k/neg b) x) (t/and-left (lt (k/neg b) x) (lt x b) h)]
                                                         [(lt x b) (t/and-right (lt (k/neg b) x) (lt x b) h)]))))))))))
-    (theorem! "abs_mul"
+    (theorem ctx "abs_mul"
       (t/forall [[x I] [y I]] (k/eq (abs (k/mul x y)) (k/mul (abs x) (abs y))))
       (t/lambda [[x I] [y I]]
         (let [goal (k/eq (abs (k/mul x y)) (k/mul (abs x) (abs y)))]
@@ -469,5 +464,13 @@
                                       [(le k/zero target)
                                        (rewrite-prop #(le k/zero %) (last (e/get-app-args p)) target pf)])])]
                 (:term (k/trans {:lhs (abs (k/mul x y)) :rhs target :term lhs=}
-                                (k/symm rhs=))))))))))
+                                (k/symm rhs=)))))))))))
+
+(defn install!
+  "Installs the `Int` order and absolute-value theorems. Idempotent."
+  []
+  (k/ensure-init!)
+  (alg/install!)
+  (locking k/install-lock
+    (k/commit! install))
   :installed)
