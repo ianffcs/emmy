@@ -187,16 +187,17 @@
 
 ;; ## The Euler–Lagrange equation for one degree of freedom
 
-(defn- install-ring!
-  "IO edge: registers the LagrangeRing identities `install-euler-lagrange`'s
-  proofs rely on into `reals.clj`'s global ring-normalization table."
-  []
-  (r/ring-identity! "LagrangeRing.square_value" '[v] '(+ (* 1 v) (* v 1)) '(+ v v))
-  (r/ring-identity! "LagrangeRing.scale_value" '[fx a df]
-                    '(+ (* 0 fx) (* a df)) '(* a df))
-  (r/ring-identity! "LagrangeRing.kinetic_expand" '[h m w]
-                    '(* (* h m) (+ w w)) '(+ (* h (* m w)) (* h (* m w))))
-  (r/ring-identity! "LagrangeRing.mul_zero" '[m] '(* m 0) '0))
+(defn- install-ring
+  "Pure. Declares the LagrangeRing identities `install-euler-lagrange`'s
+  proofs rely on."
+  [ctx]
+  (-> ctx
+      (r/ring-identity "LagrangeRing.square_value" '[v] '(+ (* 1 v) (* v 1)) '(+ v v))
+      (r/ring-identity "LagrangeRing.scale_value" '[fx a df]
+                       '(+ (* 0 fx) (* a df)) '(* a df))
+      (r/ring-identity "LagrangeRing.kinetic_expand" '[h m w]
+                       '(* (* h m) (+ w w)) '(+ (* h (* m w)) (* h (* m w))))
+      (r/ring-identity "LagrangeRing.mul_zero" '[m] '(* m 0) '0)))
 
 (defn- install-euler-lagrange [ctx]
   (-> ctx
@@ -279,6 +280,7 @@
   and the one-degree-of-freedom Euler–Lagrange interface into `ctx`."
   [ctx]
   (-> ctx
+      install-ring
       install-coordinates
       install-partials
       install-curves
@@ -290,6 +292,5 @@
   []
   (locking k/install-lock
     (d/install!)
-    (install-ring!)
     (k/commit! install))
   :installed)

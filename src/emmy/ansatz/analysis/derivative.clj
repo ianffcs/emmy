@@ -57,8 +57,11 @@
   (t/exists-intro R (near-predicate f x L eps) d
     (t/and-intro (pos d) (body f x L eps d) hd hall)))
 
-(defn- install-algebra! []
-  (doseq [[label vars lhs rhs]
+(defn- install-algebra [ctx]
+  (reduce
+   (fn [ctx [label vars lhs rhs]]
+     (r/ring-identity ctx (str "DerivativeRing." label) vars lhs rhs))
+   ctx
           [["slope_const" '[a b] '(* (- a a) b) 0]
            ["slope_add" '[a b c d h] '(* (- (+ a c) (+ b d)) h)
             '(+ (* (- a b) h) (* (- c d) h))]
@@ -80,8 +83,7 @@
            ["tolerance_cancel_right" '[a v e h] '(* a (* (* v e) h)) '(* (* a (* v e)) h)]
            ["factor_sum" '[e h] '(+ (* e h) (* e h)) '(* (+ e e) h)]
            ["chain_error" '[a c df dg h]
-            '(+ (- a (* df c)) (* df (- c (* dg h)))) '(- a (* (* df dg) h))]]]
-    (r/ring-identity! (str "DerivativeRing." label) vars lhs rhs)))
+            '(+ (- a (* df c)) (* df (- c (* dg h)))) '(- a (* (* df dg) h))]]))
 
 (defn- install-limit-tools [ctx]
   (-> ctx
@@ -502,6 +504,7 @@
   "Pure. Declares this namespace's checked derivative laws into `ctx`."
   [ctx]
   (-> ctx
+      install-algebra
       install-limit-tools
       install-elementary
       install-product
@@ -514,6 +517,5 @@
   []
   (locking k/install-lock
     (r/install!)
-    (install-algebra!)
     (k/commit! install))
   :installed)

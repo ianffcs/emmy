@@ -15,7 +15,7 @@
   discharge `Quot.lift`'s respect obligation with the representative
   congruence lemmas (`Rational.add_congr`, …). Laws are proved by `Quot.ind`
   over each variable and `Quot.sound` of a cross-multiplied identity on
-  representatives, closed by `int_ring` ([[quot-law!]])."
+  representatives, closed by `int_ring` ([[quot-law]])."
   (:refer-clojure :exclude [abs])
   (:require [ansatz.kernel.expr]
             [ansatz.kernel.level :as level]
@@ -167,14 +167,6 @@
                                     x (apply rep-lhs leaves)
                                     y (apply rep-rhs leaves)]
                                 (sound (:rep x) (:rep y) (equiv-proof x y))))))))))
-
-(defn quot-law!
-  "Deprecated IO edge, kept for callers outside this namespace (`reals.clj`'s
-  `ring-identity!`) not yet migrated to the pure, ctx-threaded [[quot-law]].
-  Installs `∀ q₁ … qₙ : Q, lhs = rhs` into the global environment."
-  [label n q-lhs q-rhs rep-lhs rep-rhs]
-  (k/commit! #(quot-law % label n q-lhs q-rhs rep-lhs rep-rhs))
-  nil)
 
 ;; ## Operations
 

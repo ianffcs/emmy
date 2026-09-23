@@ -27,3 +27,13 @@
 (deftest installing-through-a-namespace-publishes-its-declarations
   (install/install-through! 'emmy.ansatz.analysis.rational)
   (is (k/installed? "Emmy.Analysis.Rational.Equiv")))
+
+(deftest installing-everything-through-the-registry
+  (install/install-all!)
+  (let [ctx (k/base-ctx)]
+    (testing "ring identities that pure installers declare for themselves"
+      (is (k/installed? ctx "Emmy.Analysis.R.DerivativeRing.cancel_reorder"))
+      (is (k/installed? ctx "Emmy.Analysis.R.LagrangeRing.mul_zero")))
+    (testing "namespaces whose install! still defines compiled functions"
+      (is (k/installed? ctx "Emmy.PolyExpr.deriv_correct"))
+      (is (k/installed? ctx "Emmy.PolyExpr.simp_correct")))))

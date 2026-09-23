@@ -504,15 +504,13 @@
                                                    (t/app (c "equiv_of_eq") a b
                                                           (t/lam "n" Nat #(apply pointwise (conj ss %)))))))))))))
 
-(defn ring-identity!
-  "Deprecated IO edge, kept for callers outside this namespace
-  (`derivative.clj`'s `install-algebra!`, `lagrange.clj`'s `install-ring!`)
-  not yet migrated to a pure, ctx-threaded form. Installs a checked real ring
-  identity from symbolic +, *, -, 0 and 1 forms. `vars` lists the symbols.
-  The proof reduces through both quotient layers to an integer ring identity;
-  this is not a trusted algebra oracle. Call install! first. Returns the real
-  theorem constant."
-  [label vars lhs rhs]
+(defn ring-identity
+  "Pure. Declares a checked real ring identity `label` into `ctx`, from
+  symbolic +, *, -, 0 and 1 forms over the symbols `vars`. The proof reduces
+  through both quotient layers to an integer ring identity (declaring the
+  matching `RealRing.<label>` rational law on the way); this is not a trusted
+  algebra oracle. `ctx` must already contain this namespace's declarations."
+  [ctx label vars lhs rhs]
   (letfn [(interpret [ops bindings form]
             (cond
               (contains? bindings form) (get bindings form)
@@ -535,13 +533,20 @@
           rops {:add add :mul mul :neg neg :zero zero :one one}
           seqs {:add cadd :mul cmul :neg cneg :zero (cconst q/zero) :one (cconst q/one)}
           qlabel (str "RealRing." label)]
-      (q/quot-law! qlabel (count vars) (side qops lhs) (side qops rhs)
-                    (side reps lhs) (side reps rhs))
-      (k/commit! #(r-law % label (count vars) (side rops lhs) (side rops rhs)
-                         (side seqs lhs) (side seqs rhs)
-                         (fn [& args]
-                           (apply t/app (qc qlabel) (map (fn [s] (at s (last args))) (butlast args))))))
-      (c label))))
+      (-> ctx
+          (q/quot-law qlabel (count vars) (side qops lhs) (side qops rhs)
+                      (side reps lhs) (side reps rhs))
+          (r-law label (count vars) (side rops lhs) (side rops rhs)
+                 (side seqs lhs) (side seqs rhs)
+                 (fn [& args]
+                   (apply t/app (qc qlabel) (map (fn [s] (at s (last args))) (butlast args)))))))))
+
+(defn ring-identity!
+  "IO edge over [[ring-identity]]: installs the identity into the global
+  environment. Call install! first. Returns the real theorem constant."
+  [label vars lhs rhs]
+  (k/commit! #(ring-identity % label vars lhs rhs))
+  (c label))
 
 (defn- install-ring-laws [ctx]
   (as-> ctx ctx
