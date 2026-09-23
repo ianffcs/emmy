@@ -52,6 +52,7 @@
   ([[emmy.ansatz.codegen]]) are the trusted glue around the verified core, so
   they are kept small and tested by evaluating both sides."
   (:require [ansatz.core :as a]
+            [ansatz.inductive :as ind]
             [ansatz.surface.ingest :as ingest]
             [clojure.set :as set]
             [emmy.ansatz.analysis.kernel :as t]
@@ -97,8 +98,12 @@
     (let [[op & args] form
           args' (map ->ir* args)]
       (case op
-        + (if (empty? args') [:lit 0] (fold :add args'))
-        * (if (empty? args') [:lit 1] (fold :mul args'))
+        + (if (empty? args')
+            [:lit 0]
+            (fold :add args'))
+        * (if (empty? args')
+            [:lit 1]
+            (fold :mul args'))
         - (case (count args')
             0 (unsupported! "Nullary -" {:form form})
             1 [:neg (first args')]
@@ -232,13 +237,14 @@
   "Equation lemmas of `num` and `den`, for rewriting with `int_ring`."
   (vec (concat num-equations den-equations)))
 
-(defn prove-equations!
-  "Proves each `[name params statement]` by `rfl` (they hold by definitional
-  unfolding) and installs it. Skips names that are already installed."
-  [equations]
-  (doseq [[nm params prop] equations
-          :when (not (k/installed? nm))]
-    (k/quietly (a/prove-theorem nm params prop '[(rfl)]))))
+(defn prove-equations
+  "Pure. Proves each `[name params statement]` by `rfl` (they hold by
+  definitional unfolding) and declares it in `ctx`. Skips names already
+  installed."
+  [ctx equations]
+  (reduce (fn [ctx [nm params prop]]
+            (t/declare-theorem ctx (str nm) params prop '[(rfl)]))
+          ctx equations))
 
 (defonce ^:private compiled (atom {}))
 
@@ -284,45 +290,77 @@
   "The kernel type `Nat → Int` of parameter environments."
   (t/arrow (k/const "Nat") k/int-type))
 
-(defn- install-den-pos! []
-  (when-not (k/installed? den-pos-name)
-    (let [pos-one '(exact (Int.ofNat_succ_pos 0))
-          pos-mul '(exact (Int.mul_pos (Emmy.PolyExpr.den a) (Emmy.PolyExpr.den b) ih_a ih_b))]
-      (k/quietly
-       (a/prove-theorem (symbol den-pos-name) '[e]
-                        (t/forall [[e poly-type]] (rat/lt k/zero (den-term e)))
-                        ['(induction e)
-                         pos-one pos-one pos-mul pos-mul '(exact ih_a) pos-one
-                         '(exact (Int.ofNat_succ_pos fden))])))))
+(defn- install-den-pos [ctx]
+  (let [pos-one '(exact (Int.ofNat_succ_pos 0))
+        pos-mul '(exact (Int.mul_pos (Emmy.PolyExpr.den a) (Emmy.PolyExpr.den b) ih_a ih_b))]
+    (t/declare-theorem ctx den-pos-name '[e]
+      (t/forall [[e poly-type]] (rat/lt k/zero (den-term e)))
+      ['(induction e)
+       pos-one pos-one pos-mul pos-mul '(exact ih_a) pos-one
+       '(exact (Int.ofNat_succ_pos fden))])))
+
+(defn- install-value [ctx]
+  (if (k/installed? ctx value-name)
+    ctx
+    (t/declare-constant ctx :def value-name
+      (t/arrow k/int-type (t/arrow env-type (t/arrow poly-type (k/const "Emmy.Analysis.Rational.Rep"))))
+      (t/lambda [[x k/int-type] [rho env-type] [e poly-type]]
+        (rat/make-rep (num-term x rho e) (den-term e)
+                      (t/app (k/const den-pos-name) e))))))
+
+(defn install-types
+  "Pure. Declares the `Emmy.PolyExpr` inductive type into `ctx`.
+
+  `ansatz.inductive/define-inductive` threads its own environment argument
+  purely and returns the extended one, but -- as an internal implementation
+  detail of the vendored library -- it ALSO resets the process-global Ansatz
+  environment as a side effect before returning. That's harmless here: this
+  is only ever called from [[install!]]'s locked, eventually-committed flow,
+  which immediately overwrites that intermediate global state with the final
+  committed context anyway. It is not safe to call for inspecting-and-
+  discarding a context, the way every other `install` in this bridge is."
+  [ctx]
+  (if (k/installed? ctx type-name)
+    ctx
+    (update ctx :env
+      #(ind/define-inductive % type-name '[]
+         '[[const [c Int]] [X []]
+           [add [a Emmy.PolyExpr b Emmy.PolyExpr]]
+           [mul [a Emmy.PolyExpr b Emmy.PolyExpr]]
+           [neg [a Emmy.PolyExpr]]
+           [param [j Nat]]
+           [frac [fnum Int fden Nat]]]))))
+
+(defn install-theorems
+  "Pure. Proves and declares `num`/`den`'s equation lemmas, `den_pos` and
+  `value` into `ctx`. Assumes `num`/`den` -- compiled functions, not
+  ctx-threadable, see [[install!]] -- are already present in `ctx`'s
+  environment."
+  [ctx]
+  (-> ctx
+      (prove-equations semantic-equations)
+      (install-den-pos)
+      (install-value)))
 
 (defn install!
   "Installs `Emmy.PolyExpr`, its semantics `num`/`den`, their equation lemmas,
-  `den_pos` and `value` into the Ansatz environment. Idempotent."
+  `den_pos` and `value` into the Ansatz environment. Idempotent.
+
+  Not a single pure `install`, unlike most of this bridge: `num` and `den`
+  are compiled functions, defined through `ansatz.core/define-verified`,
+  which reads and writes the process-global environment throughout its own
+  multi-step elaboration -- no ctx-parametric equivalent exists in the
+  vendored library. [[install-types]] and [[install-theorems]] are pure and
+  ctx-threaded; this wrapper supplies only the unavoidable IO edge around the
+  two compiled-function definitions sandwiched between them."
   []
   (k/ensure-init!)
   (rat/install!)
   (locking k/install-lock
-    (when-not (k/installed? type-name)
-      (k/quietly
-       (eval '(ansatz.core/inductive Emmy.PolyExpr []
-                                     (const [c Int])
-                                     (X)
-                                     (add [a Emmy.PolyExpr] [b Emmy.PolyExpr])
-                                     (mul [a Emmy.PolyExpr] [b Emmy.PolyExpr])
-                                     (neg [a Emmy.PolyExpr])
-                                     (param [j Nat])
-                                     (frac [fnum Int] [fden Nat])))))
+    (k/commit! install-types)
     (define! (symbol den-name) '[e :- Emmy.PolyExpr] 'Int den-body)
     (define! (symbol num-name) '[x :- Int rho :- (=> Nat Int) e :- Emmy.PolyExpr] 'Int num-body)
-    (prove-equations! semantic-equations)
-    (install-den-pos!)
-    (when-not (k/installed? value-name)
-      (t/install-declaration!
-       :def value-name
-       (t/arrow k/int-type (t/arrow env-type (t/arrow poly-type (k/const "Emmy.Analysis.Rational.Rep"))))
-       (t/lambda [[x k/int-type] [rho env-type] [e poly-type]]
-         (rat/make-rep (num-term x rho e) (den-term e)
-                       (t/app (k/const den-pos-name) e))))))
+    (k/commit! install-theorems))
   :installed)
 
 ;; ## IR ⇄ AST values

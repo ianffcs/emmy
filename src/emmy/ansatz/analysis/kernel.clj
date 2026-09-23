@@ -138,6 +138,20 @@
   [decl kind]
   (fn [ctx label type value] (decl ctx kind label type value)))
 
+(defn declare-theorem
+  "Pure. Proves `goal` via the Ansatz tactic block `tactics` (see
+  [[emmy.ansatz.core/prove-law]] for `names`/`goal`'s two shapes) in the
+  context's environment, then declares the result as `label`. Idempotent: a
+  constant already installed under `label` is left alone. This composes
+  `prove-law` -- which installs nothing -- with [[declare-constant]]'s `:thm`
+  case, replacing `ansatz.core/prove-theorem`, which conflates proving a
+  theorem with installing it as a named global constant."
+  [ctx label names goal tactics]
+  (if (k/installed? ctx label)
+    ctx
+    (let [[goal proof] (k/prove-law ctx names goal tactics)]
+      (declare-constant ctx :thm label goal proof))))
+
 (defn declaration
   "The installed declaration `label` with its complete type and value, or nil.
   The one-argument form reads the global environment (deprecated)."

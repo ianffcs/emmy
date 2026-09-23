@@ -145,14 +145,24 @@
 
 (defn prove-law
   "Runs the Ansatz tactic block `tactics` (surface forms such as `'[(omega)]`)
-  on the closed goal `goal`, an `Expr`, in the context's environment. The
-  binders of `goal` are introduced under `names`. Returns `[goal proof]` and
-  installs nothing. This is `ansatz.core/prove-law` with the environment made
-  explicit instead of read from the global atom; the kernel verifies the proof
-  before it is returned."
+  against `goal` in the context's environment. Returns `[goal proof]` and
+  installs nothing. This is `ansatz.core/prove-theorem` with the environment
+  made explicit instead of read from the global atom, and with the final
+  installation step dropped -- the kernel still verifies the proof before it
+  is returned.
+
+  `goal` is either a closed kernel `Expr` (most of this bridge builds terms
+  directly -- see the namespace docstring), with `names` a vector of binder
+  names to introduce; or a surface s-expression needing elaboration, with
+  `names` a vector of `[sym :- type ...]` binder pairs, exactly as
+  `ansatz.core/prove-theorem`'s two call shapes distinguish them."
   [{:keys [env]} names goal tactics]
-  (let [[ps _] (proof/start-proof env goal)
-        ps (if (seq names) (basic/intros ps (mapv str names)) ps)
+  (let [expr-goal? (instance? ansatz.kernel.Expr goal)
+        pairs (when-not expr-goal? (a/parse-params names))
+        goal (if expr-goal? goal (:type-ansatz (a/elab-signature env pairs goal)))
+        [ps _] (proof/start-proof env goal)
+        intro-names (if expr-goal? (mapv str names) (mapv (comp str first) pairs))
+        ps (if (seq intro-names) (basic/intros ps intro-names) ps)
         ps (reduce a/run-tactic ps tactics)]
     (when-not (proof/solved? ps)
       (throw (ex-info (str "Proof incomplete\n" (proof/format-goals ps)) {:ps ps})))

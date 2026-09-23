@@ -38,8 +38,7 @@
   ```clojure
   (derivative (fn [x] (g/* x x)))   ;; => (+ x x)
   ```"
-  (:require [ansatz.core :as a]
-            [ansatz.kernel.env :as env]
+  (:require [ansatz.kernel.env :as env]
             [ansatz.kernel.expr :as e]
             [ansatz.kernel.name :as name]
             [clojure.walk :as walk]
@@ -232,16 +231,17 @@
               [[(k/mul DaDb Bp) iha] [(k/mul DaDb Ae) ihb]])
       "neg" [[(k/lit -1) iha]])))
 
-(defn- step-lemma!
-  "Installs `deriv_correct_<tag>`: the induction step for constructor `tag`,
-  proved by `linear-combination` from the induction hypotheses."
-  [tag]
+(defn- step-lemma
+  "Pure. Declares `deriv_correct_<tag>` in `ctx`: the induction step for
+  constructor `tag`, proved by `linear-combination` from the induction
+  hypotheses."
+  [ctx tag]
   (let [nm (str "Emmy.PolyExpr.deriv_correct_" tag)
         P ax/poly-type
         ctor (k/const (str "Emmy.PolyExpr." tag))]
-    (when-not (k/installed? nm)
-      (t/install-declaration!
-       :thm nm
+    (if (k/installed? ctx nm)
+      ctx
+      (t/declare-constant ctx :thm nm
        (if (= tag "neg")
          (t/forall [[a P] [x k/int-type] [h k/int-type] [rho ax/env-type]]
            (t/arrow (statement x h rho a) (statement x h rho (t/app ctor a))))
@@ -268,9 +268,45 @@
                       (map first deriv-equations)
                       (map first quad-equations)))))
 
+(defn- install-theorem [ctx]
+  (let [leaf (list 'int_ring @leaf-rules)]
+    (t/declare-theorem ctx theorem-name '[e x h rho]
+      (t/forall [[e ax/poly-type] [x k/int-type] [h k/int-type]
+                 [rho ax/env-type]]
+        (statement x h rho e))
+      ;; cases: const, X, add, mul, neg, param, frac
+      ['(induction e) leaf leaf
+       '(exact (Emmy.PolyExpr.deriv_correct_add a b x h rho ih_a ih_b))
+       '(exact (Emmy.PolyExpr.deriv_correct_mul a b x h rho ih_a ih_b))
+       '(exact (Emmy.PolyExpr.deriv_correct_neg a x h rho ih_a))
+       leaf leaf])))
+
+(defn install-theorems
+  "Pure. Proves and declares the equation lemmas of `deriv`/`quad`, the
+  induction-step lemmas and `deriv_correct` into `ctx` (see the namespace
+  docstring). Assumes `deriv`/`quad` -- compiled functions, not
+  ctx-threadable, see [[install!]] -- are already present in `ctx`'s
+  environment.
+
+  Deliberately not named `install`: `emmy.ansatz.install`'s registry prefers
+  a namespace's `install` var over its `install!`, and this alone would skip
+  the compiled-function definitions `install!` still has to do as IO."
+  [ctx]
+  (-> ctx
+      (ax/prove-equations deriv-equations)
+      (ax/prove-equations quad-equations)
+      (as-> ctx (reduce step-lemma ctx ["add" "mul" "neg"]))
+      (install-theorem)))
+
 (defn install!
   "Installs `deriv`, `quad`, their equation lemmas, the induction-step lemmas
-  and `deriv_correct` (see the namespace docstring). Idempotent."
+  and `deriv_correct` (see the namespace docstring). Idempotent.
+
+  Not a single pure `install`, unlike most of this bridge: `deriv`/`quad` are
+  compiled functions, defined through `ansatz.core/define-verified`, which
+  has no ctx-parametric equivalent (see [[emmy.ansatz.expression/install!]]).
+  [[install-theorems]] is pure and ctx-threaded; this wrapper supplies only
+  the unavoidable IO edge around the two compiled-function definitions."
   []
   (ax/install!)
   (alg/install!)
@@ -278,22 +314,7 @@
     (ax/define! (symbol deriv-name) '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr deriv-body)
     (ax/define! (symbol quad-name) '[x :- Int h :- Int rho :- (=> Nat Int) e :- Emmy.PolyExpr]
                 'Int quad-body)
-    (ax/prove-equations! deriv-equations)
-    (ax/prove-equations! quad-equations)
-    (doseq [tag ["add" "mul" "neg"]] (step-lemma! tag))
-    (when-not (k/installed? theorem-name)
-      (let [leaf (list 'int_ring @leaf-rules)]
-        (k/quietly
-         (a/prove-theorem (symbol theorem-name) '[e x h rho]
-                          (t/forall [[e ax/poly-type] [x k/int-type] [h k/int-type]
-                                     [rho ax/env-type]]
-                            (statement x h rho e))
-                          ;; cases: const, X, add, mul, neg, param, frac
-                          ['(induction e) leaf leaf
-                           '(exact (Emmy.PolyExpr.deriv_correct_add a b x h rho ih_a ih_b))
-                           '(exact (Emmy.PolyExpr.deriv_correct_mul a b x h rho ih_a ih_b))
-                           '(exact (Emmy.PolyExpr.deriv_correct_neg a x h rho ih_a))
-                           leaf leaf])))))
+    (k/commit! install-theorems))
   :installed)
 
 (defn theorem

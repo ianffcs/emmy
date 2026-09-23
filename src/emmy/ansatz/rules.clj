@@ -44,8 +44,7 @@
   integer-bound variables is computed (`(* ?c ?d)` above folds the constants).
   Each variable may appear only once in a pattern, and segment variables
   (`??a`) are not supported."
-  (:require [ansatz.core :as a]
-            [clojure.walk :as walk]
+  (:require [clojure.walk :as walk]
             [emmy.ansatz.algebra :as alg]
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.rational :as rat]
@@ -204,22 +203,20 @@
 
 (defn- value-of [e] (list 'Emmy.PolyExpr.value 'x 'rho e))
 
-(defn- prove-rule! [set-name i {:keys [lhs rhs pattern skeleton vars]}]
-  (let [nm (kname set-name ".rule_" i)
-        [term extra] (pattern->term pattern)]
-    (when-not (k/installed? nm)
-      (try
-        (k/quietly
-         (a/prove-theorem nm
-                          (vec (concat (mapcat binder (concat vars extra))
-                                       '[x :- Int rho :- (=> Nat Int)]))
-                          (cross term skeleton)
-                          [(list 'int_ring eval-rules)]))
-        (catch Throwable t
-          (throw (ex-info (str "ruleset " set-name ": rule " i " is not sound: "
-                               (pr-str lhs) " => " (pr-str rhs))
-                          {:type ::unsound :rule i :lhs lhs :rhs rhs}
-                          t)))))))
+(defn- prove-rule [ctx set-name i {:keys [lhs rhs pattern skeleton vars]}]
+  (let [nm (kname set-name ".rule_" i)]
+    (try
+      (let [[term extra] (pattern->term pattern)]
+        (t/declare-theorem ctx (str nm)
+          (vec (concat (mapcat binder (concat vars extra))
+                       '[x :- Int rho :- (=> Nat Int)]))
+          (cross term skeleton)
+          [(list 'int_ring eval-rules)]))
+      (catch Throwable t
+        (throw (ex-info (str "ruleset " set-name ": rule " i " is not sound: "
+                             (pr-str lhs) " => " (pr-str rhs))
+                        {:type ::unsound :rule i :lhs lhs :rhs rhs}
+                        t))))))
 
 (defn- simp-body [simp step]
   (list 'match 'e
@@ -303,27 +300,31 @@
           simp-thm (kname set-name ".simp_correct")
           simp-eqs (simp-equations simp step)]
       (locking k/install-lock
-        (doseq [[i rule] (map-indexed vector parsed)]
-          (prove-rule! set-name i rule))
+        (k/commit!
+         (fn [ctx]
+           (reduce (fn [ctx [i rule]] (prove-rule ctx set-name i rule))
+                   ctx (map-indexed vector parsed))))
         (ax/define! step '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
                     (apply list 'match 'e
                            (concat (map (juxt :pattern :skeleton) parsed)
                                    [['_ 'e]])))
-        (when-not (k/installed? step-thm)
-          (k/quietly
-           (a/prove-theorem step-thm '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
-                            (cross (list step 'e) 'e)
-                            [(list 'int_ring_split (into [step] eval-rules))])))
+        (k/commit!
+         (fn [ctx]
+           (t/declare-theorem ctx (str step-thm)
+             '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
+             (cross (list step 'e) 'e)
+             [(list 'int_ring_split (into [step] eval-rules))])))
         (ax/define! simp '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
                     (simp-body simp step))
-        (ax/prove-equations! simp-eqs)
-        (when-not (k/installed? simp-thm)
-          (k/quietly
-           (a/prove-theorem simp-thm '[e x rho]
-                            (t/forall [[e ax/poly-type] [x k/int-type] [rho ax/env-type]]
-                              (rat/equiv (ax/value-term x rho (t/app (k/const (str simp)) e))
-                                         (ax/value-term x rho e)))
-                            (simp-proof simp step step-thm)))))
+        (k/commit!
+         (fn [ctx]
+           (-> ctx
+               (ax/prove-equations simp-eqs)
+               (t/declare-theorem (str simp-thm) '[e x rho]
+                 (t/forall [[e ax/poly-type] [x k/int-type] [rho ax/env-type]]
+                   (rat/equiv (ax/value-term x rho (t/app (k/const (str simp)) e))
+                              (ax/value-term x rho e)))
+                 (simp-proof simp step step-thm))))))
       (swap! installed-rules assoc set-name rules)
       {:name set-name
        :rules rules

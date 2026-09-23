@@ -34,8 +34,7 @@
   `(Emmy.PolyExpr.const (Int.ofNat 0))`; [[emmy.ansatz.match]] compiles them
   into shapes Ansatz can elaborate, and the `Int.rec` lowering registered by
   [[emmy.ansatz.core/ensure-init!]] runs them natively."
-  (:require [ansatz.core :as a]
-            [emmy.ansatz.algebra :as alg]
+  (:require [emmy.ansatz.algebra :as alg]
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.rational :as rat]
             [emmy.ansatz.codegen :as codegen]
@@ -173,29 +172,52 @@
    (leaf '(Emmy.PolyExpr.param j))
    (leaf '(Emmy.PolyExpr.frac fnum fden))])
 
+(defn- install-smart-constructor-lemmas [ctx]
+  (reduce (fn [ctx [nm params prop unfold]]
+            (t/declare-theorem ctx (str nm) params prop
+              [(list 'int_ring_split (into unfold semantic-rules))]))
+          ctx smart-constructor-lemmas))
+
+(defn- install-theorem [ctx]
+  (t/declare-theorem ctx theorem-name '[e x rho]
+    (t/forall [[e ax/poly-type] [x k/int-type] [rho ax/env-type]]
+      (rat/equiv (ax/value-term x rho (t/app (k/const simp-name) e))
+                 (ax/value-term x rho e)))
+    theorem-proof))
+
+(defn install-theorems
+  "Pure. Proves and declares the smart constructors' correctness lemmas,
+  `simp`'s equation lemmas and `simp_correct` into `ctx`. Assumes the smart
+  constructors and `simp` -- compiled functions, not ctx-threadable, see
+  [[install!]] -- are already present in `ctx`'s environment.
+
+  Deliberately not named `install`: `emmy.ansatz.install`'s registry prefers
+  a namespace's `install` var over its `install!`, and this alone would skip
+  the compiled-function definitions `install!` still has to do as IO."
+  [ctx]
+  (-> ctx
+      (install-smart-constructor-lemmas)
+      (ax/prove-equations simp-equations)
+      (install-theorem)))
+
 (defn install!
   "Installs the simplifier and proves `simp_correct` (a few seconds, once per
-  JVM). Idempotent."
+  JVM). Idempotent.
+
+  Not a single pure `install`, unlike most of this bridge: the smart
+  constructors and `simp` are compiled functions, defined through
+  `ansatz.core/define-verified`, which has no ctx-parametric equivalent (see
+  [[emmy.ansatz.expression/install!]]). [[install-theorems]] is pure and
+  ctx-threaded; this wrapper supplies only the unavoidable IO edge around the
+  compiled-function definitions sandwiched between its two phases."
   []
   (ax/install!)
   (alg/install!)
   (locking k/install-lock
     (doseq [[nm params body] smart-constructors]
       (ax/define! nm params 'Emmy.PolyExpr body))
-    (doseq [[nm params prop unfold] smart-constructor-lemmas
-            :when (not (k/installed? nm))]
-      (k/quietly
-       (a/prove-theorem nm params prop
-                        [(list 'int_ring_split (into unfold semantic-rules))])))
     (ax/define! (symbol simp-name) '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr simp-body)
-    (ax/prove-equations! simp-equations)
-    (when-not (k/installed? theorem-name)
-      (k/quietly
-       (a/prove-theorem (symbol theorem-name) '[e x rho]
-                        (t/forall [[e ax/poly-type] [x k/int-type] [rho ax/env-type]]
-                          (rat/equiv (ax/value-term x rho (t/app (k/const simp-name) e))
-                                     (ax/value-term x rho e)))
-                        theorem-proof))))
+    (k/commit! install-theorems))
   :installed)
 
 (defn simp-poly
