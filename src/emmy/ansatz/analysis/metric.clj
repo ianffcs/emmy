@@ -23,7 +23,6 @@
 
 (def ^:private prefix "Emmy.Analysis.Metric.")
 (def ^:private u (level/succ level/zero))
-(defn- c [name] (k/const (str prefix name)))
 (def ^:private R r/R)
 (def ^:private Prop t/prop)
 

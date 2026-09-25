@@ -36,11 +36,13 @@
            (m/norm (r/sub x y)))))
   (is (= (m/has-deriv-at (t/lam "x" m/Real identity) (k/const "Emmy.Analysis.R.one")
                          (k/const "Emmy.Analysis.R.zero"))
+         #_{:clj-kondo/ignore [:deprecated-var]}
          (m/derivative-witness (t/lam "x" m/Real identity)
                                (k/const "Emmy.Analysis.R.zero")
                                (k/const "Emmy.Analysis.R.one")))))
 
 (deftest derivative-witness-is-explicitly-deprecated
   (is (= "Use has-deriv-at; retained only for migration."
-         (:deprecated (meta #'m/derivative-witness))))
+         (:deprecated (meta #_{:clj-kondo/ignore [:deprecated-var]}
+                            #'m/derivative-witness))))
   (is (nil? (resolve 'emmy.ansatz.analysis.mathlib/fderiv))))
