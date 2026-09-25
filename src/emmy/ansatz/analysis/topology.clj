@@ -8,7 +8,8 @@
   (:require [ansatz.kernel.expr :as e]
             [ansatz.kernel.level :as level]
             [emmy.ansatz.analysis.kernel :as t]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private u (level/succ level/zero))
 (def ^:private prefix "Emmy.Analysis.Topology.")
@@ -121,7 +122,5 @@
   "Installs the space and continuity definitions and checked identity and
   composition theorems. Returns :installed; requires only bundled Init."
   []
-  (k/ensure-init!)
-  (locking k/install-lock
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.topology)
   :installed)

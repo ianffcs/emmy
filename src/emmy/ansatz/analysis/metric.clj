@@ -19,7 +19,8 @@
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.reals :as r]
             [emmy.ansatz.analysis.topology :as topology]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private prefix "Emmy.Analysis.Metric.")
 (def ^:private u (level/succ level/zero))
@@ -309,8 +310,5 @@
 (defn install!
   "Install checked metric definitions and the constructed-real instance."
   []
-  (locking k/install-lock
-    (r/install!)
-    (topology/install!)
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.metric)
   :installed)

@@ -22,7 +22,8 @@
             [emmy.ansatz.analysis.derivative :as d]
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.reals :as r]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private u (level/succ level/zero))
 (def ^:private prefix "Emmy.Analysis.Lagrange.")
@@ -290,7 +291,5 @@
   "Installs finite-dimensional partial derivatives, curve derivatives and the
   one-degree-of-freedom Euler–Lagrange interface. Idempotent."
   []
-  (locking k/install-lock
-    (d/install!)
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.lagrange)
   :installed)

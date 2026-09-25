@@ -49,6 +49,7 @@
             [emmy.ansatz.codegen :as codegen]
             [emmy.ansatz.core :as k]
             [emmy.ansatz.expression :as ax]
+            [emmy.ansatz.install :as registry]
             [emmy.ansatz.simplify :as simp]
             [emmy.expression :as x]
             [emmy.generic :as g]
@@ -281,40 +282,32 @@
        '(exact (Emmy.PolyExpr.deriv_correct_neg a x h rho ih_a))
        leaf leaf])))
 
-(defn install-theorems
-  "Pure. Proves and declares the equation lemmas of `deriv`/`quad`, the
-  induction-step lemmas and `deriv_correct` into `ctx` (see the namespace
-  docstring). Assumes `deriv`/`quad` -- compiled functions, not
-  ctx-threadable, see [[install!]] -- are already present in `ctx`'s
-  environment.
+(defn- define-deriv-and-quad!
+  "`deriv` and `quad` are compiled functions, defined through
+  `ansatz.core/define-verified` against the global environment."
+  []
+  (ax/define! (symbol deriv-name) '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr deriv-body)
+  (ax/define! (symbol quad-name) '[x :- Int h :- Int rho :- (=> Nat Int) e :- Emmy.PolyExpr]
+              'Int quad-body))
 
-  Deliberately not named `install`: `emmy.ansatz.install`'s registry prefers
-  a namespace's `install` var over its `install!`, and this alone would skip
-  the compiled-function definitions `install!` still has to do as IO."
-  [ctx]
+(defn- install-theorems [ctx]
   (-> ctx
       (ax/prove-equations deriv-equations)
       (ax/prove-equations quad-equations)
       (as-> ctx (reduce step-lemma ctx ["add" "mul" "neg"]))
       (install-theorem)))
 
-(defn install!
-  "Installs `deriv`, `quad`, their equation lemmas, the induction-step lemmas
-  and `deriv_correct` (see the namespace docstring). Idempotent.
+(def install
+  "Install steps for `deriv`, `quad`, their equation lemmas, the
+  induction-step lemmas and `deriv_correct` (see the namespace docstring and
+  [[emmy.ansatz.install]])."
+  [(registry/io define-deriv-and-quad!)
+   (registry/pure install-theorems)])
 
-  Not a single pure `install`, unlike most of this bridge: `deriv`/`quad` are
-  compiled functions, defined through `ansatz.core/define-verified`, which
-  has no ctx-parametric equivalent (see [[emmy.ansatz.expression/install!]]).
-  [[install-theorems]] is pure and ctx-threaded; this wrapper supplies only
-  the unavoidable IO edge around the two compiled-function definitions."
+(defn install!
+  "Installs this namespace and its prerequisites. Idempotent."
   []
-  (ax/install!)
-  (alg/install!)
-  (locking k/install-lock
-    (ax/define! (symbol deriv-name) '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr deriv-body)
-    (ax/define! (symbol quad-name) '[x :- Int h :- Int rho :- (=> Nat Int) e :- Emmy.PolyExpr]
-                'Int quad-body)
-    (k/commit! install-theorems))
+  (registry/install-through! 'emmy.ansatz.calculus)
   :installed)
 
 (defn theorem

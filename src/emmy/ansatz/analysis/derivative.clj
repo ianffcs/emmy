@@ -6,7 +6,8 @@
   (:require [ansatz.kernel.level :as level]
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.reals :as r]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private u (level/succ level/zero))
 (def R r/R)
@@ -515,7 +516,5 @@
 (defn install!
   "Installs analytic difference-quotient derivatives and the checked rules."
   []
-  (locking k/install-lock
-    (r/install!)
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.derivative)
   :installed)

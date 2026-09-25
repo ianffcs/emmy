@@ -58,6 +58,7 @@
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.rational :as rat]
             [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]
             [emmy.ansatz.match :as m]
             [emmy.expression :as x]))
 
@@ -308,17 +309,14 @@
         (rat/make-rep (num-term x rho e) (den-term e)
                       (t/app (k/const den-pos-name) e))))))
 
-(defn install-types
-  "Pure. Declares the `Emmy.PolyExpr` inductive type into `ctx`.
+(defn- install-types
+  "Declares the `Emmy.PolyExpr` inductive type into `ctx`.
 
-  `ansatz.inductive/define-inductive` threads its own environment argument
-  purely and returns the extended one, but -- as an internal implementation
-  detail of the vendored library -- it ALSO resets the process-global Ansatz
-  environment as a side effect before returning. That's harmless here: this
-  is only ever called from [[install!]]'s locked, eventually-committed flow,
-  which immediately overwrites that intermediate global state with the final
-  committed context anyway. It is not safe to call for inspecting-and-
-  discarding a context, the way every other `install` in this bridge is."
+  `ansatz.inductive/define-inductive` threads its environment argument and
+  returns the extended one, but the vendored library also resets the
+  process-global environment before returning. That's harmless as a step of
+  [[install]], which the registry only runs under its lock and commits right
+  after; it is not safe for inspecting-and-discarding a context."
   [ctx]
   (if (k/installed? ctx type-name)
     ctx
@@ -331,36 +329,30 @@
            [param [j Nat]]
            [frac [fnum Int fden Nat]]]))))
 
-(defn install-theorems
-  "Pure. Proves and declares `num`/`den`'s equation lemmas, `den_pos` and
-  `value` into `ctx`. Assumes `num`/`den` -- compiled functions, not
-  ctx-threadable, see [[install!]] -- are already present in `ctx`'s
-  environment."
-  [ctx]
+(defn- define-semantics!
+  "`num` and `den` are compiled functions: `ansatz.core/define-verified` reads
+  and writes the global environment throughout, with no context-passing form."
+  []
+  (define! (symbol den-name) '[e :- Emmy.PolyExpr] 'Int den-body)
+  (define! (symbol num-name) '[x :- Int rho :- (=> Nat Int) e :- Emmy.PolyExpr] 'Int num-body))
+
+(defn- install-theorems [ctx]
   (-> ctx
       (prove-equations semantic-equations)
       (install-den-pos)
       (install-value)))
 
-(defn install!
-  "Installs `Emmy.PolyExpr`, its semantics `num`/`den`, their equation lemmas,
-  `den_pos` and `value` into the Ansatz environment. Idempotent.
+(def install
+  "Install steps for `Emmy.PolyExpr`, `num`/`den`, their equation lemmas,
+  `den_pos` and `value` (see [[emmy.ansatz.install]])."
+  [(registry/pure install-types)
+   (registry/io define-semantics!)
+   (registry/pure install-theorems)])
 
-  Not a single pure `install`, unlike most of this bridge: `num` and `den`
-  are compiled functions, defined through `ansatz.core/define-verified`,
-  which reads and writes the process-global environment throughout its own
-  multi-step elaboration -- no ctx-parametric equivalent exists in the
-  vendored library. [[install-types]] and [[install-theorems]] are pure and
-  ctx-threaded; this wrapper supplies only the unavoidable IO edge around the
-  two compiled-function definitions sandwiched between them."
+(defn install!
+  "Installs this namespace and its prerequisites. Idempotent."
   []
-  (k/ensure-init!)
-  (rat/install!)
-  (locking k/install-lock
-    (k/commit! install-types)
-    (define! (symbol den-name) '[e :- Emmy.PolyExpr] 'Int den-body)
-    (define! (symbol num-name) '[x :- Int rho :- (=> Nat Int) e :- Emmy.PolyExpr] 'Int num-body)
-    (k/commit! install-theorems))
+  (registry/install-through! 'emmy.ansatz.expression)
   :installed)
 
 ;; ## IR ⇄ AST values

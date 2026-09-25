@@ -7,7 +7,8 @@
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.reals :as r]
             [emmy.ansatz.analysis.topology :as top]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private u (level/succ level/zero))
 (def ^:private prefix "Emmy.Analysis.RealTopology.")
@@ -175,8 +176,5 @@
   "Installs real epsilon-ball opens, the topology, and the two-way continuity
   bridge. Idempotent; requires only the independent constructed real library."
   []
-  (locking k/install-lock
-    (r/install!)
-    (top/install!)
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.real-topology)
   :installed)

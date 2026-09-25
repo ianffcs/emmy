@@ -9,10 +9,9 @@
   (:require [clojure.string :as string]
             [emmy.ansatz.analysis.derivative :as derivative]
             [emmy.ansatz.analysis.kernel :as t]
-            [emmy.ansatz.analysis.metric :as metric]
-            [emmy.ansatz.analysis.real-topology :as real-topology]
             [emmy.ansatz.analysis.reals :as reals]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private prefix "Emmy.Mathlib.")
 (def Real reals/R)
@@ -98,11 +97,5 @@
 (defn install!
   "Installs checked Mathlib-shaped aliases for the physlib analysis subset."
   []
-  (locking k/install-lock
-    (k/ensure-init!)
-    (reals/install!)
-    (real-topology/install!)
-    (derivative/install!)
-    (metric/install!)
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.mathlib)
   :installed)

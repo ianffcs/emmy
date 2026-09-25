@@ -23,7 +23,8 @@
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.order :as o]
             [emmy.ansatz.analysis.rational :as rat]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private l1 (level/succ level/zero))
 (def ^:private l0 level/zero)
@@ -1562,8 +1563,5 @@
   "Installs ℚ as an ordered commutative ring with absolute value, the
   Archimedean property and halving. Idempotent."
   []
-  (rat/install!)
-  (o/install!)
-  (locking k/install-lock
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.qfield)
   :installed)

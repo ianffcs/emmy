@@ -23,7 +23,8 @@
             [ansatz.kernel.name :as name]
             [emmy.ansatz.algebra :as alg]
             [emmy.ansatz.analysis.kernel :as t]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private I k/int-type)
 (def ^:private l0 level/zero)
@@ -469,8 +470,5 @@
 (defn install!
   "Installs the `Int` order and absolute-value theorems. Idempotent."
   []
-  (k/ensure-init!)
-  (alg/install!)
-  (locking k/install-lock
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.order)
   :installed)

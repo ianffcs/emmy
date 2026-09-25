@@ -25,7 +25,7 @@
   (when-not (symbol? var)
     (throw (ex-info "The coordinate must be a symbol" {:variable var})))
   (k/ensure-init!)
-  (when-not (k/installed? (k/base-ctx) polynomial/theorem-name) (polynomial/install!))
+  (polynomial/install!)
   (let [ir     (expression/->ir expr)
         params (expression/params-of ir var)
         value  (expression/ir->value ir var params)]

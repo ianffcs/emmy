@@ -28,7 +28,8 @@
             [ansatz.kernel.level :as level]
             [emmy.ansatz.algebra :as algebra]
             [emmy.ansatz.analysis.kernel :as t]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (defn representative
   "Returns a reduced [numerator denominator] with positive denominator.
@@ -267,7 +268,5 @@
   "Installs the kernel rational-representative layer (see the namespace
   docstring). Idempotent; requires only the bundled Init tier."
   []
-  (k/ensure-init!)
-  (locking k/install-lock
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.rational)
   :installed)

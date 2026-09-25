@@ -45,12 +45,12 @@
   Each variable may appear only once in a pattern, and segment variables
   (`??a`) are not supported."
   (:require [clojure.walk :as walk]
-            [emmy.ansatz.algebra :as alg]
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.rational :as rat]
             [emmy.ansatz.codegen :as codegen]
             [emmy.ansatz.core :as k]
             [emmy.ansatz.expression :as ax]
+            [emmy.ansatz.install :as registry]
             [emmy.pattern.syntax :as ps]))
 
 (defn- unsupported! [msg data]
@@ -291,32 +291,33 @@
       (when (not= old rules)
         (throw (ex-info (str "ruleset " set-name " is already defined with different rules")
                         {:type ::redefined :name set-name}))))
-    (ax/install!)
-    (alg/install!)
+    (registry/install-through! 'emmy.ansatz.expression)
     (let [parsed (parse-rules rules)
           step (kname set-name ".step")
           simp (kname set-name ".simp")
           step-thm (kname set-name ".step_correct")
           simp-thm (kname set-name ".simp_correct")
           simp-eqs (simp-equations simp step)]
-      (locking k/install-lock
-        (k/commit!
+      (registry/run-steps!
+       [(registry/pure
          (fn [ctx]
            (reduce (fn [ctx [i rule]] (prove-rule ctx set-name i rule))
                    ctx (map-indexed vector parsed))))
-        (ax/define! step '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
-                    (apply list 'match 'e
-                           (concat (map (juxt :pattern :skeleton) parsed)
-                                   [['_ 'e]])))
-        (k/commit!
+        (registry/io
+         #(ax/define! step '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
+                      (apply list 'match 'e
+                             (concat (map (juxt :pattern :skeleton) parsed)
+                                     [['_ 'e]]))))
+        (registry/pure
          (fn [ctx]
            (t/declare-theorem ctx (str step-thm)
              '[e :- Emmy.PolyExpr x :- Int rho :- (=> Nat Int)]
              (cross (list step 'e) 'e)
              [(list 'int_ring_split (into [step] eval-rules))])))
-        (ax/define! simp '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
-                    (simp-body simp step))
-        (k/commit!
+        (registry/io
+         #(ax/define! simp '[e :- Emmy.PolyExpr] 'Emmy.PolyExpr
+                      (simp-body simp step)))
+        (registry/pure
          (fn [ctx]
            (-> ctx
                (ax/prove-equations simp-eqs)
@@ -324,7 +325,7 @@
                  (t/forall [[e ax/poly-type] [x k/int-type] [rho ax/env-type]]
                    (rat/equiv (ax/value-term x rho (t/app (k/const (str simp)) e))
                               (ax/value-term x rho e)))
-                 (simp-proof simp step step-thm))))))
+                 (simp-proof simp step step-thm)))))])
       (swap! installed-rules assoc set-name rules)
       {:name set-name
        :rules rules

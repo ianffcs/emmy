@@ -16,7 +16,8 @@
             [ansatz.kernel.level :as level]
             [emmy.ansatz.algebra :as algebra]
             [emmy.ansatz.analysis.kernel :as t]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private u (level/succ level/zero))
 (def ^:private prefix "Emmy.Analysis.RealConstruction.")
@@ -135,7 +136,5 @@
   "Installs the exact sequence/quotient carrier and quotient soundness theorem.
   Does not install or assume complete ordered field laws."
   []
-  (k/ensure-init!)
-  (locking k/install-lock
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.real)
   :installed)

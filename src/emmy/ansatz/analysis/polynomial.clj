@@ -10,8 +10,8 @@
             [emmy.ansatz.analysis.qfield :as q]
             [emmy.ansatz.analysis.rational :as rat]
             [emmy.ansatz.analysis.reals :as r]
-            [emmy.ansatz.calculus :as calculus]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private u (level/succ level/zero))
 (def ^:private P (k/const "Emmy.PolyExpr"))
@@ -163,8 +163,5 @@
   "Installs evalReal and its structural HasDerivAt theorem. Real evaluation is
   a non-executable kernel definition, not a conversion to floating point."
   []
-  (locking k/install-lock
-    (d/install!)
-    (calculus/install!)
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.polynomial)
   :installed)

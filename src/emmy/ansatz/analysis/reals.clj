@@ -20,7 +20,8 @@
             [ansatz.kernel.level :as level]
             [emmy.ansatz.analysis.kernel :as t]
             [emmy.ansatz.analysis.qfield :as q]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 (def ^:private l0 level/zero)
 (def ^:private l1 (level/succ level/zero))
@@ -2456,7 +2457,5 @@
   "Installs Cauchy sequences over `Q`, their equivalence and the quotient `R`.
   Idempotent."
   []
-  (q/install!)
-  (locking k/install-lock
-    (k/commit! install))
+  (registry/install-through! 'emmy.ansatz.analysis.reals)
   :installed)

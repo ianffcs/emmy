@@ -54,7 +54,8 @@
             [ansatz.kernel.tc :as tc]
             [ansatz.tactic.basic :as basic]
             [ansatz.tactic.proof :as proof]
-            [emmy.ansatz.core :as k]))
+            [emmy.ansatz.core :as k]
+            [emmy.ansatz.install :as registry]))
 
 ;; ## Reification
 ;;
@@ -612,4 +613,5 @@
   "Deprecated. Use `emmy.ansatz.install/install!`, which registers the
   tactics."
   []
-  (register!))
+  (registry/install-through! 'emmy.ansatz.algebra)
+  :installed)
